@@ -36,8 +36,8 @@ on:
         description: "Image repository name (e.g., namespace/repo)"
         type: string
         required: true
-      image-tag:
-        description: "Full image reference to scan (registry/image:tag or image:tag)"
+      image-sha:
+        description: "Short commit SHA used as the image tag (e.g. a1b2c3d)"
         type: string
         required: true
     secrets:
@@ -66,7 +66,7 @@ jobs:
     name: "🛡️ KCS Image Scan"
     runs-on: ubuntu-latest
     env:
-      SCAN_TARGET: ${{ inputs.image-tag }}
+      SCAN_TARGET: ${{ inputs.image-name }}:sha-${{ inputs.image-sha }}
       BUILD_NUMBER: ${{ github.run_id }}
       BUILD_PIPELINE: ${{ github.run_id }}
       API_TOKEN: ${{ secrets.API_TOKEN }}

@@ -30,8 +30,8 @@ on:
         description: "Image repository name (e.g., namespace/repo)"
         type: string
         required: true
-      image-tag:
-        description: "Docker image tag(s) to scan"
+      image-sha:
+        description: "Short commit SHA used as the image tag (e.g. a1b2c3d)"
         type: string
         required: true
     secrets:
@@ -56,11 +56,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Debug image-tag value
-        run: |
-          echo "inputs.image-tag = '${{ inputs.image-tag }}'"
-          echo "inputs.registry = '${{ inputs.registry }}'"
-          echo "inputs.image-name = '${{ inputs.image-name }}'"
+      - name: Set image reference
+        id: img
+        run: echo "image-ref=${{ inputs.image-name }}:sha-${{ inputs.image-sha }}" >> $GITHUB_OUTPUT
+
+      - name: Debug image ref
+        run: echo "Scanning: ${{ steps.img.outputs.image-ref }}"
 
       - name: Download SBOM
         uses: actions/download-artifact@v4
@@ -82,7 +83,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "image"
-          image-ref: "${{ inputs.image-tag }}"
+          image-ref: "${{ steps.img.outputs.image-ref }}"
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
@@ -111,7 +112,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "image"
-          image-ref: "${{ inputs.image-tag }}"
+          image-ref: "${{ steps.img.outputs.image-ref }}"
           format: "json"
           output: "trivy-secrets.json"
           scanners: "secret"
