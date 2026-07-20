@@ -13,8 +13,8 @@
 #       uses: <org>/<repo>/.github/workflows/kcs-scan.yml@main
 #       with:
 #         registry: docker.io
-#         image-name: karimkhaled842/pipeline-demo
-#         image-tag: karimkhaled842/pipeline-demo:sha-xxxxxx
+#         image-name: karimkhaledopsera/pipeline-demo
+#         image-tag: karimkhaledopsera/pipeline-demo:sha-xxxxxx
 #       secrets:
 #         API_TOKEN: ${{ secrets.API_TOKEN }}
 #         KCS_REGISTRY_USERNAME: ${{ secrets.KCS_REGISTRY_USERNAME }}

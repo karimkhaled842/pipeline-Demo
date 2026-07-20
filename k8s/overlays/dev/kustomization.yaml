@@ -39,5 +39,5 @@ configMapGenerator:
 
 images:
   - digest: sha256:63589c63942568084a8a4718e6e1953a7979df45d3abc2094ecb480114e82849
-    name: karimkhaled842/pipeline-demo
-    newName: karimkhaled842/pipeline-demo
+    name: karimkhaledopsera/pipeline-demo
+    newName: karimkhaledopsera/pipeline-demo

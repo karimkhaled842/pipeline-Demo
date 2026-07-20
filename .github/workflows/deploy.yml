@@ -14,7 +14,7 @@
 #       uses: <org>/<repo>/.github/workflows/deploy.yml@main
 #       with:
 #         registry: docker.io
-#         image-name: karimkhaled842/pipeline-demo
+#         image-name: karimkhaledopsera/pipeline-demo
 #         image-digest: ${{ needs.build.outputs.image-digest }}
 #         app-name: secureapp-dev
 #         environment: development

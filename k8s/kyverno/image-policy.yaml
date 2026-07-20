@@ -8,7 +8,7 @@ metadata:
     policies.kyverno.io/category: Security
     policies.kyverno.io/severity: high
     policies.kyverno.io/description: >-
-      Blocks all images not from karimkhaled842/pipeline-demo and verifies signatures for those that are.
+      Blocks all images not from karimkhaledopsera/pipeline-demo and verifies signatures for those that are.
 spec:
   validationFailureAction: Enforce
   background: false  # Image verification doesn't work in background mode
@@ -24,7 +24,7 @@ spec:
               namespaces:
                 - secureapp-dev
       validate:
-        message: "Forbidden: You can only deploy images from 'karimkhaled842/pipeline-demo' in this namespace."
+        message: "Forbidden: You can only deploy images from 'karimkhaledopsera/pipeline-demo' in this namespace."
         # The 'images' variable automatically grabs all containers, initContainers, etc.
         # The '-' means "every item in the list must match this pattern"
         pattern:
@@ -32,7 +32,7 @@ spec:
             template:
               spec:
                 containers:
-                  - image: "karimkhaled842/pipeline-demo*"
+                  - image: "karimkhaledopsera/pipeline-demo*"
     - name: verify-signature
       match:
         any:
@@ -44,7 +44,7 @@ spec:
                   kubernetes.io/metadata.name: secureapp-dev
       verifyImages:
         - imageReferences:
-            - "karimkhaled842/pipeline-demo*"
+            - "karimkhaledopsera/pipeline-demo*"
           mutateDigest: true
           verifyDigest: true
           imageRegistryCredentials:

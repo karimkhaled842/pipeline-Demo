@@ -30,7 +30,7 @@ spec:
       matchLabels:
         kubernetes.io/metadata.name: secureapp-dev
   matchImageReferences:
-    - glob: "karimkhaled842/pipeline-demo*" # ✅ Only this registry is allowed
+    - glob: "karimkhaledopsera/pipeline-demo*" # ✅ Only this registry is allowed
   attestors:
     - name: "attestor"
       cosign:
