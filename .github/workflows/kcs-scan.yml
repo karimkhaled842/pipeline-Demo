@@ -76,11 +76,7 @@ jobs:
       RUST_BACKTRACE: full
     steps:
       - name: Login to Kaspersky registry (pull the scanner image)
-        uses: docker/login-action@v3
-        with:
-          registry: repo.kcs.kaspersky.com
-          username: ${{ secrets.KCS_REGISTRY_USERNAME }}
-          password: ${{ secrets.KCS_REGISTRY_PASSWORD }}
+        run: echo "${{ secrets.KCS_REGISTRY_PASSWORD }}" | docker login repo.kcs.kaspersky.com -u "${{ secrets.KCS_REGISTRY_USERNAME }}" --password-stdin
 
       - name: Run KCS Scanner (JSON report)
         run: |
