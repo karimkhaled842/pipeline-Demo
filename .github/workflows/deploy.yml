@@ -111,11 +111,9 @@ jobs:
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube
-          if echo "${{ secrets.KUBECONFIG_B64 }}" | grep -q "apiVersion:"; then
-            echo "${{ secrets.KUBECONFIG_B64 }}" > ~/.kube/config
-          else
-            echo "${{ secrets.KUBECONFIG_B64 }}" | tr -d ' ' | base64 -d -i > ~/.kube/config
-          fi
+          cat <<'EOF' > ~/.kube/config
+          ${{ secrets.KUBECONFIG_B64 }}
+          EOF
           chmod 600 ~/.kube/config
           kubectl get nodes
 
