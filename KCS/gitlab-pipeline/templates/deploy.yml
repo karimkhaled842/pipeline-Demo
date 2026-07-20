@@ -1,0 +1,144 @@
+---
+# ==============================================================================
+# Template: Deploy with ArgoCD
+# ==============================================================================
+# Deploys applications to Kubernetes via ArgoCD with:
+#   - Kustomize-based manifest updates
+#   - Git commit/push for manifest changes
+#   - ArgoCD application sync with retry logic
+#   - Health and sync status verification
+#
+# Prerequisites — Set these GitLab CI/CD variables:
+#   GIT_TOKEN_COMMIT: (masked) GitHub token with commit access
+#   ARGOCD_TOKEN: (masked) ArgoCD API token
+#   ARGOCD_SERVER: ArgoCD server address
+#
+# Runner Requirements:
+#   This job requires a runner with:
+#   - Tag: self-hosted
+#   - Kubernetes cluster access (kubectl)
+#   - ArgoCD CLI
+#   - Kustomize CLI
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/deploy.yml'
+#       ref: main
+# ==============================================================================
+
+deploy:
+  stage: deploy
+  image: alpine:3.19
+  needs: [sign, build]
+  tags:
+    - self-hosted
+
+  # Deploy only on default branch (main)
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
+
+  variables:
+    ENVIRONMENT: development
+    OVERLAY: dev
+
+  before_script:
+    - apk add --no-cache curl git bash jq
+
+    # Install kubectl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - install -m 755 kubectl /usr/local/bin/kubectl
+    - kubectl version --client
+
+    # Install kustomize
+    - curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    - mv kustomize /usr/local/bin/
+    - kustomize version
+
+    # Install ArgoCD CLI
+    - curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    - chmod +x /usr/local/bin/argocd
+    - argocd version --client
+
+    # Configure git with commit token
+    - git remote set-url origin "https://${GIT_TOKEN_COMMIT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "gitlab-ci[bot]@users.noreply.github.com"
+
+  script:
+    - echo "=== Normalize image name ==="
+    - IMAGE_NAME_LOWER=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+    - IMAGE_REF="${REGISTRY}/${IMAGE_NAME_LOWER}@${IMAGE_DIGEST}"
+    - echo "Deploying: ${IMAGE_REF}"
+
+    - echo "=== Setup Secrets and Project ==="
+    - kustomize build k8s/kyverno | kubectl apply -f -
+    - kustomize build k8s/vault-eso | kubectl apply -f -
+
+    - echo "=== Update Kubernetes Manifests ==="
+    - cd k8s/overlays/${OVERLAY}
+    - kustomize edit set image "${REGISTRY}/${IMAGE_NAME_LOWER}=${IMAGE_REF}"
+    - cd ${CI_PROJECT_DIR}
+
+    - echo "=== Commit Manifest Changes to SCM ==="
+    - git add k8s/overlays/${OVERLAY}/
+    - |
+      if git diff --staged --quiet; then
+        echo "No manifest changes to commit"
+      else
+        git commit -m "chore(deploy): promote image ${IMAGE_NAME_LOWER} to ${IMAGE_DIGEST} [skip ci]
+
+        Image       : ${IMAGE_REF}
+        Actor       : ${GITLAB_USER_LOGIN}
+        Pipeline    : ${CI_PIPELINE_URL}
+        Commit      : ${CI_COMMIT_SHA}
+        Ref         : ${CI_COMMIT_BRANCH}"
+        git push origin HEAD:${CI_COMMIT_BRANCH}
+      fi
+
+    - echo "=== Port-forward ArgoCD Server ==="
+    - kubectl port-forward -n argocd services/argocd-server 8080:80 &
+
+    - echo "=== Sync ArgoCD Application ==="
+    - |
+      MAX_RETRIES=3
+      RETRY_COUNT=0
+      while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
+        if argocd app sync ${APP_NAME} \
+          --server ${ARGOCD_SERVER} --auth-token ${ARGOCD_TOKEN} \
+          --insecure --force --timeout 300; then
+          echo "Sync initiated successfully"
+          break
+        fi
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+          echo "Retrying in 30 seconds..."
+          sleep 30
+        fi
+      done
+
+    - echo "=== Wait for ArgoCD Sync ==="
+    - |
+      argocd app wait ${APP_NAME} \
+        --server ${ARGOCD_SERVER} --auth-token ${ARGOCD_TOKEN} \
+        --insecure --health --sync --timeout 600
+
+    - echo "=== Get Application Status ==="
+    - |
+      echo ""
+      echo "============================================"
+      echo "  Deployment Status"
+      echo "============================================"
+      argocd app get ${APP_NAME} -o wide
+      HEALTH=$(argocd app get ${APP_NAME} -o json | jq -r '.status.health.status')
+      SYNC=$(argocd app get ${APP_NAME} -o json | jq -r '.status.sync.status')
+      echo "--------------------------------------------"
+      echo "  Health:  ${HEALTH}"
+      echo "  Sync:    ${SYNC}"
+      echo "  Image:   ${IMAGE_REF}"
+      echo "============================================"
+
+    - echo "=== Notify Deployment ==="
+    - echo "Deployment completed successfully"

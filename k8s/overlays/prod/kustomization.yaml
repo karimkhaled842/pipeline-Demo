@@ -1,0 +1,76 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: secureapp-prod
+
+resources:
+  - ../../base
+
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: api
+                resources:
+                  requests:
+                    cpu: "250m"
+                    memory: "512Mi"
+                  limits:
+                    cpu: "1000m"
+                    memory: "1Gi"
+                env:
+                  - name: ENVIRONMENT
+                    value: "production"
+                  - name: LOG_LEVEL
+                    value: "info"
+
+  - patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: secureapp
+      spec:
+        minReplicas: 3
+        maxReplicas: 20
+
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: secureapp
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/limit-rps: "50"
+      spec:
+        rules:
+          - host: app.example.com
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: secureapp
+                      port:
+                        name: http
+        tls:
+          - hosts:
+              - app.example.com
+            secretName: secureapp-prod-tls
+
+configMapGenerator:
+  - name: secureapp-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - WORKERS=4
+      - ENABLE_METRICS=true

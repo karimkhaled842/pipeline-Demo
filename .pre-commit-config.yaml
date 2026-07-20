@@ -1,0 +1,26 @@
+repos:
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.24.2
+  hooks:
+  - id: gitleaks
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: trailing-whitespace
+  - id: detect-private-key       # catches raw PEM/RSA keys
+  - id: check-added-large-files
+    args: ['--maxkb=512']
+  # - id: no-commit-to-branch
+  #   name: "🌳 git · Protect main branches"
+  #   args: ["--branch", "main", "--branch", "master"]
+
+- repo: https://github.com/hadolint/hadolint
+  rev: v2.12.0
+  hooks:
+  - id: hadolint-docker
+    args: ["--failure-threshold", "warning"]
+- repo: https://github.com/bridgecrewio/checkov
+  rev: 3.2.0
+  hooks:
+    - id: checkov
+      args: ["--quiet"]

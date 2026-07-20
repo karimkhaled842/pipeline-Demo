@@ -1,0 +1,39 @@
+---
+steps:
+  - script: |
+      echo "============================================"
+      echo "  Security Pipeline Summary"
+      echo "============================================"
+      echo ""
+      echo "+---------------------------+---------------+"
+      echo "| Stage                     | Status        |"
+      echo "+---------------------------+---------------+"
+      echo "| Lint                      | Completed     |"
+      echo "| Test                      | Completed     |"
+      echo "| SonarQube                 | Completed     |"
+      echo "| Build & SBOM              | Completed     |"
+      echo "| Image Scan                | Completed     |"
+      echo "| Sign                      | Completed     |"
+      echo "| Deploy                    | Completed     |"
+      echo "+---------------------------+---------------+"
+      echo ""
+      echo "Pipeline completed. Review individual stage results in Azure DevOps UI."
+      echo ""
+      echo "============================================"
+      echo "  Artifacts Generated"
+      echo "============================================"
+      echo "  - Lint Reports (Bandit, Pylint, Mypy)"
+      echo "  - Test Coverage Reports"
+      echo "  - SonarQube Analysis"
+      echo "  - SBOM (SPDX, CycloneDX formats)"
+      echo "  - Vulnerability Scan Reports (Trivy)"
+      echo "  - Container Image Signatures"
+      echo ""
+      echo "============================================"
+      echo "  Pipeline: $(Build.BuildUri)"
+      echo "============================================"
+    displayName: 'Generate security report'
+
+  - script: |
+      echo "Security pipeline completed successfully"
+    displayName: 'Pipeline completion'

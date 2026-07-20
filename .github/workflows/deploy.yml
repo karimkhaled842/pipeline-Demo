@@ -1,0 +1,206 @@
+# ==============================================================================
+# Reusable Workflow: Deploy with ArgoCD
+# ==============================================================================
+# Deploys applications to Kubernetes via ArgoCD with:
+#   - Kustomize-based manifest updates
+#   - Git commit/push for manifest changes
+#   - ArgoCD application sync with retry logic
+#   - Health and sync status verification
+#   - Deployment notification summary
+#
+# Usage:
+#   jobs:
+#     deploy:
+#       uses: <org>/<repo>/.github/workflows/deploy.yml@main
+#       with:
+#         registry: ghcr.io
+#         image-name: ${{ github.repository }}
+#         image-digest: ${{ needs.build.outputs.image-digest }}
+#         app-name: secureapp-dev
+#         environment: development
+#         overlay: dev
+#       secrets:
+#         GIT_TOKEN_COMMIT: ${{ secrets.GIT_TOKEN_COMMIT }}
+#         ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+#         ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+# ==============================================================================
+
+name: "Reusable - Deploy"
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry hostname"
+        type: string
+        required: true
+      image-name:
+        description: "Image repository name (e.g., org/repo)"
+        type: string
+        required: true
+      image-digest:
+        description: "Docker image digest to deploy"
+        type: string
+        required: true
+      app-name:
+        description: "ArgoCD application name"
+        type: string
+        required: true
+      environment:
+        description: "Target deployment environment"
+        type: string
+        required: false
+        default: "development"
+      overlay:
+        description: "Kustomize overlay directory name"
+        type: string
+        required: false
+        default: "dev"
+    secrets:
+      GIT_TOKEN_COMMIT:
+        description: "GitHub token with commit access to the repository"
+        required: true
+      ARGOCD_TOKEN:
+        description: "ArgoCD API token"
+        required: true
+      ARGOCD_SERVER:
+        description: "ArgoCD server address"
+        required: true
+
+# Minimum required permissions
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: "🚀 Deploy"
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GIT_TOKEN_COMMIT }}
+
+      - name: Normalize image name
+        run: echo "IMAGE_NAME_LOWER=$(echo '${{ inputs.image-name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Determine Environment
+        id: env
+        run: |
+          echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          echo "overlay=${{ inputs.overlay }}" >> $GITHUB_OUTPUT
+
+      - name: Setup Secrets and Project
+        run: |
+          kustomize build k8s/kyverno | kubectl apply -f -
+          kustomize build k8s/vault-eso | kubectl apply -f -
+
+      - name: Update Kubernetes Manifests
+        run: |
+          # Update image tag in Kustomization
+          cd k8s/overlays/${{ steps.env.outputs.overlay }}
+
+          # Set the new image with digest
+          kustomize edit set image \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}=${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+
+      - name: Commit Manifest Changes to SCM
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/overlays/${{ steps.env.outputs.overlay }}/
+
+          # Only commit if there are actual changes
+          if git diff --staged --quiet; then
+            echo "No manifest changes to commit"
+          else
+            git commit -m "chore(deploy): promote image ${{ env.IMAGE_NAME_LOWER }} to ${{ inputs.image-digest }} [skip ci]
+
+            Image       : ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+            Actor       : ${{ github.actor }}
+            Run         : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Commit      : ${{ github.sha }}
+            Ref         : ${{ github.ref }}"
+
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Port-forward ArgoCD Server
+        run: |
+          kubectl port-forward -n argocd services/argocd-server 8080:80 &
+
+      - name: Sync ArgoCD Application
+        id: deploy
+        env:
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        run: |
+          # Trigger sync with retry
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
+
+            if argocd app sync ${{ inputs.app-name }} \
+              --server $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN \
+              --insecure --force --timeout 300; then
+              echo "Sync initiated successfully"
+              break
+            fi
+
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Retrying in 30 seconds..."
+              sleep 30
+            fi
+          done
+
+      - name: Wait for ArgoCD Sync
+        env:
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        run: |
+          # Wait for sync to complete
+          argocd app wait ${{ inputs.app-name }} \
+            --server $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN \
+            --insecure \
+            --health \
+            --sync \
+            --timeout 600
+
+      - name: Get Application Status
+        run: |
+          echo "## 🚀 Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get app status
+          argocd app get ${{ inputs.app-name }} -o wide >> $GITHUB_STEP_SUMMARY
+
+          # Get health status
+          HEALTH=$(argocd app get ${{ inputs.app-name }} -o json | jq -r '.status.health.status')
+          SYNC=$(argocd app get ${{ inputs.app-name }} -o json | jq -r '.status.sync.status')
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Health | $HEALTH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sync | $SYNC |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Deployment
+        if: always()
+        run: |
+          STATUS=${{ job.status }}
+
+          if [[ "$STATUS" == "success" ]]; then
+            EMOJI="✅"
+            MESSAGE="Deployment successful"
+          else
+            EMOJI="❌"
+            MESSAGE="Deployment failed"
+          fi
+
+          echo "$EMOJI $MESSAGE" >> $GITHUB_STEP_SUMMARY

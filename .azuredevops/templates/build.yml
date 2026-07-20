@@ -1,0 +1,81 @@
+---
+parameters:
+  - name: registry
+    type: string
+  - name: imageName
+    type: string
+
+steps:
+  - script: |
+      SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+      IMAGE_FULL="${{ parameters.registry }}/${{ parameters.imageName }}"
+      IMAGE_TAG="${IMAGE_FULL}:${SHORT_SHA}"
+
+      echo "Building image: ${IMAGE_TAG}"
+
+      echo "$(GHCR_PAT)" | docker login ${{ parameters.registry }} -u "$(GHCR_USERNAME)" --password-stdin
+
+      docker buildx create --use --name devsecops-builder 2>/dev/null || docker buildx use devsecops-builder
+
+      docker buildx build \
+        --push \
+        -t "${IMAGE_TAG}" \
+        -f docker/Dockerfile \
+        --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+        --build-arg VCS_REF=$(Build.SourceVersion) \
+        --build-arg VERSION="${SHORT_SHA}" \
+        --label "org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+        --label "org.opencontainers.image.revision=$(Build.SourceVersion)" \
+        --label "org.opencontainers.image.version=${SHORT_SHA}" \
+        --label "org.opencontainers.image.source=$(Build.Repository.Uri)" \
+        .
+
+      IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_TAG}" | cut -d@ -f2)
+
+      echo "Built image: ${IMAGE_TAG}@${IMAGE_DIGEST}"
+
+      echo "##vso[task.setvariable variable=IMAGE_TAG;isOutput=true]${IMAGE_TAG}"
+      echo "##vso[task.setvariable variable=IMAGE_DIGEST;isOutput=true]${IMAGE_DIGEST}"
+    displayName: 'Build and push Docker image'
+    name: setOutputs
+    env:
+      GHCR_PAT: $(GHCR_PAT)
+      GHCR_USERNAME: $(GHCR_USERNAME)
+
+  - script: |
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      syft version
+    displayName: 'Install Syft'
+
+  - script: |
+      IMAGE_TAG_FULL="$(IMAGE_TAG_FROM_OUTPUT)"
+      if [ -z "${IMAGE_TAG_FULL}" ]; then
+        SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+        IMAGE_TAG_FULL="${{ parameters.registry }}/${{ parameters.imageName }}:${SHORT_SHA}"
+      fi
+      echo "Generating SBOM for: ${IMAGE_TAG_FULL}"
+
+      syft "${IMAGE_TAG_FULL}" -o spdx-json > $(Build.ArtifactStagingDirectory)/sbom.spdx.json
+      syft "${IMAGE_TAG_FULL}" -o cyclonedx-json > $(Build.ArtifactStagingDirectory)/sbom.cyclonedx.json
+      syft "${IMAGE_TAG_FULL}" -o template -t csv.tmpl > $(Build.ArtifactStagingDirectory)/sbom.txt
+    displayName: 'Generate SBOM'
+    name: sbom
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish SBOM artifacts'
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifact: sbom-artifacts
+      publishLocation: pipeline
+
+  - script: |
+      echo ""
+      echo "============================================"
+      echo "  Build Summary"
+      echo "============================================"
+      echo "  Image        | $(setOutputs.IMAGE_TAG)"
+      echo "  Digest       | $(setOutputs.IMAGE_DIGEST)"
+      echo "  SBOM         | sbom.spdx.json"
+      echo "============================================"
+    displayName: 'Build summary'
+    condition: always()

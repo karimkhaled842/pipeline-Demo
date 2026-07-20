@@ -1,0 +1,50 @@
+---
+# ==============================================================================
+# Template: Build & SBOM
+# ==============================================================================
+# Builds and pushes Docker images with:
+#   - Docker Buildx with BuildKit
+#   - SHA-based image tags
+#   - GitHub Container Registry push
+#   - SBOM generation (SPDX, CycloneDX)
+#   - Dotenv artifact for downstream jobs (image tag + digest)
+#
+# Prerequisites — Set these GitLab CI/CD variables:
+#   GHCR_USERNAME: GitHub username for registry auth
+#   GHCR_PASSWORD: (masked) GitHub token with packages:write
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/build.yml'
+#       ref: main
+# ==============================================================================
+
+build:
+  stage: build
+  needs: [test]
+  tags:
+    - k8s
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+
+  #before_script:
+    #- cat /etc/gitlab-runner/certs/gitlab.demo.lab.crt >> /kaniko/ssl/certs/ca-certificates.crt
+    #- echo "$GITLAB_OPENCERT_DATA" >> /kaniko/ssl/certs/ca-certificates.crt
+  script:
+    - cat /etc/gitlab-runner/certs/gitlab.demo.lab.crt >> /kaniko/ssl/certs/ca-certificates.crt
+    - export
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/docker/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+      --compressed-caching=false
+      --digest-file /tmp/image-digest
+    - echo "IMAGE_DIGEST=$(cat /tmp/image-digest)" >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+    paths:
+      - build.env
+

@@ -1,0 +1,61 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: vallow-only-my-registry-and-verify-signature
+  annotations:
+    policies.kyverno.io/title: Allow Only Private Registry and Verify Signatures
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Blocks all images not from ghcr.io/ahmed-magdi2712/ and verifies signatures for those that are.
+spec:
+  validationFailureAction: Enforce
+  background: false  # Image verification doesn't work in background mode
+  webhookTimeoutSeconds: 30  # Image verification needs more time
+  failurePolicy: Fail
+  rules:
+    - name: block-external-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaces:
+                - secureapp-dev
+      validate:
+        message: "Forbidden: You can only deploy images from 'ghcr.io/ahmed-magdi2712/' in this namespace."
+        # The 'images' variable automatically grabs all containers, initContainers, etc.
+        # The '-' means "every item in the list must match this pattern"
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - image: "ghcr.io/ahmed-magdi2712/*"
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: secureapp-dev
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/ahmed-magdi2712/*"
+          mutateDigest: true
+          verifyDigest: true
+          imageRegistryCredentials:
+            secrets:
+              - ghcr-secret
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEts83RWM23QrJW4KX78bs1ljIvsjF
+                      BiGamz8zn3dxHmCulcllP5L4FHpi3IBzqNHZfpH/X9SC4WA8UwjaGXsmQw==
+                      -----END PUBLIC KEY-----

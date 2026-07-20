@@ -1,0 +1,13 @@
+# Docker BuildKit daemon configuration
+[worker.oci]
+  max-parallelism = 4
+
+[registry."ghcr.io"]
+  mirrors = []
+
+[cache]
+  gc = true
+  gcPolicy = [
+    { keepBytes = 512000000, keepDuration = 604800 },
+    { all = true, keepBytes = 1024000000 }
+  ]

@@ -1,0 +1,95 @@
+---
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.12'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python ${{ parameters.pythonVersion }}'
+    inputs:
+      versionSpec: ${{ parameters.pythonVersion }}
+      addToPath: true
+      architecture: 'x64'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r src/app/requirements.txt
+      pip install ruff flake8 mypy bandit pylint pydocstyle black isort lxml
+      pip install yamllint checkov
+    displayName: 'Install linting dependencies'
+
+  - script: |
+      HADOLINT_VER=$(curl -sL https://api.github.com/repos/hadolint/hadolint/releases/latest | grep tag_name | cut -d'"' -f4)
+      wget -q "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VER}/hadolint-Linux-x86_64" -O /usr/local/bin/hadolint
+      chmod +x /usr/local/bin/hadolint
+    displayName: 'Install hadolint'
+
+  - script: |
+      apt-get update && apt-get install -y --no-install-recommends nodejs npm
+      npm install -g markdownlint-cli2
+    displayName: 'Install markdownlint'
+
+  - script: |
+      ruff check src/ --exit-zero
+      ruff format --check src/ --diff || true
+    displayName: 'Run Ruff'
+    continueOnError: true
+
+  - script: |
+      flake8 src/ --exit-zero --max-line-length=120 --ignore=E501,W503,E203
+    displayName: 'Run Flake8'
+    continueOnError: true
+
+  - script: |
+      mypy src/ --ignore-missing-imports --no-error-summary --html-report=mypy-report || true
+    displayName: 'Run Mypy'
+    continueOnError: true
+
+  - script: |
+      bandit -r src/ -f json -o bandit-report.json || true
+      bandit -r src/ -ll || true
+    displayName: 'Run Bandit'
+    continueOnError: true
+
+  - script: |
+      pydocstyle src/ --convention=pep257 --add-ignore=D100,D101,D102,D103,D104,D105,D107 || true
+    displayName: 'Run pydocstyle'
+    continueOnError: true
+
+  - script: |
+      isort --check-only --diff src/ || true
+    displayName: 'Check imports with isort'
+    continueOnError: true
+
+  - script: |
+      hadolint docker/Dockerfile --failure-threshold warning || true
+    displayName: 'Run hadolint'
+    continueOnError: true
+
+  - script: |
+      yamllint -c .yamllint k8s/
+    displayName: 'Run yamllint'
+    continueOnError: true
+
+  - script: |
+      checkov -d k8s/ --framework kubernetes --output_format cli,sarif --output_file_path console,$(Build.ArtifactStagingDirectory)/checkov-results.sarif \
+        --skip-check CKV_K8S_21,CKV_K8S_22,CKV_K8S_15,CKV_K8S_40,CKV_K8S_43,CKV_K8S_35,CKV2_K8S_6,CKV_K8S_38 || true
+    displayName: 'Run Checkov'
+    continueOnError: true
+
+  - script: |
+      mkdir -p $(Build.ArtifactStagingDirectory)/lint-reports
+      cp bandit-report.json $(Build.ArtifactStagingDirectory)/lint-reports/ 2>/dev/null || true
+      cp -r mypy-report $(Build.ArtifactStagingDirectory)/lint-reports/ 2>/dev/null || true
+      cp $(Build.ArtifactStagingDirectory)/checkov-results.sarif $(Build.ArtifactStagingDirectory)/lint-reports/ 2>/dev/null || true
+    displayName: 'Stage lint artifacts'
+    condition: always()
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish lint reports'
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)/lint-reports
+      artifact: lint-reports
+      publishLocation: pipeline
+    condition: always()

@@ -1,0 +1,96 @@
+---
+# ==============================================================================
+# Template: SonarQube Scan
+# ==============================================================================
+# Performs SonarQube analysis with:
+#   - SonarQube Scan (via sonar-scanner CLI)
+#   - Quality Gate validation
+#   - Metrics publishing (bugs, vulnerabilities, coverage, etc.)
+#
+# Prerequisites — Set these GitLab CI/CD variables:
+#   SONAR_TOKEN: (masked) SonarQube authentication token
+#   SONAR_HOST_URL: (optional, default: https://sonarcloud.io)
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/sonarqube.yml'
+#       ref: main
+# ==============================================================================
+
+sonarqube:
+  stage: sonarqube
+  image: python:3.12
+  interruptible: true
+  needs: [test]
+
+  variables:
+    SONAR_HOST_URL: https://sonarcloud.io
+    SONAR_SCANNER_VERSION: "6.2.1.4610"
+
+  before_script:
+    - pip install --upgrade pip
+    - pip install -r src/app/requirements.txt
+    - |
+      SONAR_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+      wget -q "${SONAR_URL}"
+    - unzip -q "sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+    - export PATH="$PWD/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin:$PATH"
+    - sonar-scanner --version
+
+  script:
+    - echo "=== SonarQube Scan ==="
+    - |
+      sonar-scanner \
+        -Dsonar.host.url="${SONAR_HOST_URL}" \
+        -Dsonar.token="${SONAR_TOKEN}" \
+        -Dsonar.projectBaseDir=. \
+        -Dsonar.scm.revision="${CI_COMMIT_SHA}" \
+        -Dsonar.qualitygate.wait=true \
+        -Dsonar.qualitygate.timeout=300
+
+    - echo "=== Publish SonarQube Metrics Summary ==="
+    - |
+      if [ ! -f ".scannerwork/report-task.txt" ]; then
+        echo "No scannerwork report found -- skipping metrics summary"
+        exit 0
+      fi
+
+      PROJECT_KEY=$(grep "^projectKey=" .scannerwork/report-task.txt | cut -d= -f2-)
+      DASHBOARD_URL=$(grep "^dashboardUrl=" .scannerwork/report-task.txt | cut -d= -f2-)
+      METRICS="bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,security_hotspots"
+
+      curl -s -u "${SONAR_TOKEN}:" \
+        "${SONAR_HOST_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=${METRICS}" \
+        > /tmp/sonar-metrics.json
+
+      echo ""
+      echo "============================================"
+      echo "  SonarQube Analysis Results"
+      echo "  Dashboard: ${DASHBOARD_URL}"
+      echo "============================================"
+
+      # Print metrics using Python
+      printf '%s\n' \
+        'import json' \
+        'with open("/tmp/sonar-metrics.json") as f:' \
+        '    data = json.load(f)' \
+        'seen = {}' \
+        'for m in data.get("component", {}).get("measures", []):' \
+        '    seen[m["metric"]] = m["value"]' \
+        'bugs = seen.get("bugs", "N/A")' \
+        'vulns = seen.get("vulnerabilities", "N/A")' \
+        'hotspots = seen.get("security_hotspots", "N/A")' \
+        'smells = seen.get("code_smells", "N/A")' \
+        'coverage = seen.get("coverage", "N/A")' \
+        'duplication = seen.get("duplicated_lines_density", "N/A")' \
+        'print("  Bugs:              " + str(bugs))' \
+        'print("  Vulnerabilities:   " + str(vulns))' \
+        'print("  Security Hotspots: " + str(hotspots))' \
+        'print("  Code Smells:       " + str(smells))' \
+        'print("  Coverage:          " + str(coverage) + "%")' \
+        'print("  Duplication:       " + str(duplication) + "%")' \
+        > /tmp/print_metrics.py
+      python3 /tmp/print_metrics.py
+
+      echo "============================================"

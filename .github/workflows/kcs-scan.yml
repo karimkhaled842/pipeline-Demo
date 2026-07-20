@@ -1,0 +1,102 @@
+# ==============================================================================
+# Reusable Workflow: KCS Image Scan
+# ==============================================================================
+# Scans container images using Kaspersky Cyber Security (KCS) scanner with:
+#   - KCS Scanner (vulnerability, secrets, misconfiguration scanning)
+#   - HTML report generation
+#   - Artifact upload for downstream consumption
+#
+# Usage:
+#   jobs:
+#     kcs-scan:
+#       uses: <org>/<repo>/.github/workflows/kcs-scan.yml@main
+#       with:
+#         registry: ghcr.io
+#         image-name: ${{ github.repository }}
+#         image-tag: ${{ needs.build.outputs.image-tag }}
+#       secrets:
+#         API_TOKEN: ${{ secrets.API_TOKEN }}
+#         API_CA_CERT: ${{ secrets.API_CA_CERT }}
+#         COMPANY_EXT_REGISTRY_USERNAME: ${{ secrets.COMPANY_EXT_REGISTRY_USERNAME }}
+#         COMPANY_EXT_REGISTRY_PASSWORD: ${{ secrets.COMPANY_EXT_REGISTRY_PASSWORD }}
+# ==============================================================================
+
+name: "Reusable - KCS Image Scan"
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry hostname"
+        type: string
+        required: true
+      image-name:
+        description: "Image repository name (e.g., org/repo)"
+        type: string
+        required: true
+      image-tag:
+        description: "Docker image tag(s) to scan"
+        type: string
+        required: true
+    secrets:
+      API_TOKEN:
+        description: "KCS API authentication token"
+        required: true
+      API_CA_CERT:
+        description: "KCS API CA certificate"
+        required: true
+      COMPANY_EXT_REGISTRY_USERNAME:
+        description: "External container registry username"
+        required: true
+      COMPANY_EXT_REGISTRY_PASSWORD:
+        description: "External container registry password"
+        required: true
+
+# Minimum required permissions
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  kcs-scan:
+    name: "🔍 KCS Image Scan"
+    runs-on: self-hosted
+    env:
+      SCAN_TARGET: ${{ inputs.image-tag }}
+      BUILD_NUMBER: ${{ github.run_id }}
+      BUILD_PIPELINE: ${{ github.run_id }}
+      API_TOKEN: ${{ secrets.API_TOKEN }}
+      API_CA_CERT: ${{ secrets.API_CA_CERT }}
+      COMPANY_EXT_REGISTRY_USERNAME: ${{ secrets.COMPANY_EXT_REGISTRY_USERNAME }}
+      COMPANY_EXT_REGISTRY_PASSWORD: ${{ secrets.COMPANY_EXT_REGISTRY_PASSWORD }}
+      API_BASE_URL: https://kcs.demo.lab
+      RUST_BACKTRACE: full
+    steps:
+      - name: Run KCS Scanner with HTML Output
+        run: |
+          docker run --rm \
+            -e SCAN_TARGET \
+            -e BUILD_NUMBER \
+            -e BUILD_PIPELINE \
+            -e API_TOKEN \
+            -e API_CA_CERT \
+            -e COMPANY_EXT_REGISTRY_USERNAME \
+            -e COMPANY_EXT_REGISTRY_PASSWORD \
+            -e API_BASE_URL \
+            -e RUST_BACKTRACE \
+            repo.kcs.kaspersky.com/images/scanner:v2.4.0-with-db \
+            /bin/sh /entrypoint.sh "$SCAN_TARGET" --html --stdout > kcs-scan-report.html
+
+      - name: Upload KCS Scan HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcs-scan-report
+          path: |
+            kcs-scan-report.html
+          retention-days: 90
+
+      - name: KCS Scan Summary
+        run: |
+          echo "## 🔍 KCS Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "KCS Scan HTML report uploaded as artifact." >> $GITHUB_STEP_SUMMARY

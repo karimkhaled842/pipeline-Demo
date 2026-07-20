@@ -1,0 +1,31 @@
+# Trivy Ignore File
+# Updated: 2026-04-29
+
+# Python package vulnerabilities with no fix available (transitive deps)
+# ecdsa - no fixed version available yet
+CVE-2024-23342
+
+# pyasn1 - version conflict with python-jose
+CVE-2026-30922
+
+# pip - build-time only, not in runtime
+CVE-2025-8869
+CVE-2026-3219
+
+# protobuf - version conflict with opentelemetry
+CVE-2026-0994
+
+# python-multipart - version conflict with starlette
+CVE-2026-24486
+CVE-2026-40347
+
+# starlette - version conflict with fastapi
+CVE-2025-62727
+CVE-2025-54121
+CVE-2024-47874
+
+# Kubernetes misconfiguration exceptions
+# KSV-0125: ghcr.io is a trusted registry (GitHub Container Registry)
+KSV-0125
+KSV-0053
+KSV-0014

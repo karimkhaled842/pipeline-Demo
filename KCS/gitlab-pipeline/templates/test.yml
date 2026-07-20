@@ -1,0 +1,95 @@
+---
+# ==============================================================================
+# Template: Test
+# ==============================================================================
+# Runs unit tests, integration tests, and security tests with:
+#   - PostgreSQL 16 (service container)
+#   - Redis 7 (service container)
+#   - pytest with coverage
+#   - Native JUnit test reporting
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/test.yml'
+#       ref: main
+# ==============================================================================
+
+test:
+  stage: test
+  image: python:3.12
+  interruptible: true
+  needs: [lint]
+  tags:
+    - k8s
+
+
+  # Service containers — equivalent of GitHub services:
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+        POSTGRES_DB: test_db
+    - name: redis:7-alpine
+      alias: redis
+
+  variables:
+    DATABASE_URL: postgresql://test_user:test_password@postgres:5432/test_db
+    REDIS_URL: redis://redis:6379/0
+    ENVIRONMENT: testing
+    COVERAGE_THRESHOLD_UNIT: "80"
+    COVERAGE_THRESHOLD_INTEGRATION: "70"
+
+  before_script:
+    - pip install --upgrade pip
+    - pip install -r src/app/requirements.txt
+    - pip install pytest pytest-cov pytest-asyncio==0.21.2 pytest-mock \
+        pytest-xdist pytest-timeout factory-boy faker \
+        pytest-postgres pytest-redis httpx
+
+  script:
+    - echo "=== Unit Tests with Coverage ==="
+    - |
+      pytest src/app/tests/ \
+        --cov=src/app \
+        --cov-report=xml:coverage.xml \
+        --cov-report=html:htmlcov \
+        --cov-report=term-missing \
+        --cov-fail-under=${COVERAGE_THRESHOLD_UNIT} \
+        -v --tb=short \
+        --junitxml=junit-results.xml \
+        --timeout=60
+
+    - echo "=== Integration Tests ==="
+    - |
+      pytest src/app/tests/integration/ \
+        --cov=src/app \
+        --cov-report=xml:integration-coverage.xml \
+        --cov-append \
+        --cov-fail-under=${COVERAGE_THRESHOLD_INTEGRATION} \
+        -v --tb=short \
+        --junitxml=integration-junit.xml \
+        -m integration
+
+    - echo "=== Security Tests ==="
+    - |
+      pytest src/app/tests/security/ \
+        -v --tb=short \
+        --junitxml=security-junit.xml \
+        -m security
+
+  artifacts:
+    paths:
+      - coverage.xml
+      - integration-coverage.xml
+      - htmlcov/
+      - coverage.svg
+    reports:
+      junit:
+        - junit-results.xml
+        - integration-junit.xml
+        - security-junit.xml
+    expire_in: 30 days
+    when: always

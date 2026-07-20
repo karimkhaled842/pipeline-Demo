@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Test & Coverage
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+junit-*.xml
+*-coverage.xml
+*-junit.xml
+coverage.svg
+
+# Type checking
+.mypy_cache/
+mypy-report/
+
+# Linting
+.ruff_cache/
+bandit-report.json
+pylint-results.json
+
+# SonarQube
+.sonarqube/
+.scannerwork/
+
+# Docker
+.dockerignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubernetes secrets (never commit)
+k8s/**/secret-*.yaml
+k8s/**/*-sealed.yaml
+
+# SBOM outputs
+sbom.*.json
+sbom.txt
+
+# Scan results
+trivy-*.sarif
+grype-*.sarif
+snyk-*.sarif
+anchore-*.sarif
+*-results.json
+*-results.sarif
+
+# Alembic
+alembic/versions/*.pyc

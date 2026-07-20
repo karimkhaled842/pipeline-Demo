@@ -1,0 +1,67 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: secureapp-staging
+
+resources:
+  - ../../base
+
+namePrefix: staging-
+
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: api
+                resources:
+                  requests:
+                    cpu: "100m"
+                    memory: "256Mi"
+                  limits:
+                    cpu: "500m"
+                    memory: "512Mi"
+                env:
+                  - name: ENVIRONMENT
+                    value: "staging"
+                  - name: LOG_LEVEL
+                    value: "info"
+
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: secureapp
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-staging"
+      spec:
+        rules:
+          - host: staging.app.example.com
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: secureapp
+                      port:
+                        name: http
+        tls:
+          - hosts:
+              - staging.app.example.com
+            secretName: secureapp-staging-tls
+
+configMapGenerator:
+  - name: secureapp-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=staging
+      - LOG_LEVEL=info
+      - WORKERS=2

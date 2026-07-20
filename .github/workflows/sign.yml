@@ -1,0 +1,159 @@
+# ==============================================================================
+# Reusable Workflow: Sign Image
+# ==============================================================================
+# Signs container images and SBOMs using Cosign with:
+#   - Private key-based signing
+#   - SBOM attachment and signing
+#   - Signature verification
+#   - SBOM attachment verification
+#
+# Usage:
+#   jobs:
+#     sign:
+#       uses: <org>/<repo>/.github/workflows/sign.yml@main
+#       with:
+#         registry: ghcr.io
+#         image-name: ${{ github.repository }}
+#         image-digest: ${{ needs.build.outputs.image-digest }}
+#         cosign-public-key: ${{ vars.COSIGN_PUBLIC_KEY }}
+#       secrets:
+#         COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+#         COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+# ==============================================================================
+
+name: "Reusable - Sign Image"
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry hostname"
+        type: string
+        required: true
+      image-name:
+        description: "Image repository name (e.g., org/repo)"
+        type: string
+        required: true
+      image-digest:
+        description: "Docker image digest to sign"
+        type: string
+        required: true
+      cosign-public-key:
+        description: "Cosign public key for image verification"
+        type: string
+        required: true
+    secrets:
+      COSIGN_PRIVATE_KEY:
+        description: "Cosign private key for image signing"
+        required: true
+      COSIGN_PASSWORD:
+        description: "Password for the Cosign private key"
+        required: true
+
+# Minimum required permissions
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  sign:
+    name: "🟢 Sign Image"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: sbom/
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.2.4"
+
+      - name: Verify Cosign Installation
+        run: |
+          cosign version
+          cosign verify-blob --help
+
+      - name: Normalize image name
+        run: echo "IMAGE_NAME_LOWER=$(echo '${{ inputs.image-name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # -------------------------------------------------------------------------
+      # Key-based Signing
+      # -------------------------------------------------------------------------
+      - name: Sign with Private Key
+        run: |
+          echo "${{ secrets.COSIGN_PRIVATE_KEY }}" | cosign sign \
+            --key env://COSIGN_PRIVATE_KEY \
+            --annotations "repo=${{ github.repository }}" \
+            --annotations "sha=${{ github.sha }}" \
+            --annotations "ref=${{ github.ref }}" \
+            --annotations "actor=${{ github.actor }}" \
+            --annotations "run_id=${{ github.run_id }}" \
+            --annotations "run_number=${{ github.run_number }}" \
+            --yes \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      # -------------------------------------------------------------------------
+      # SBOM Signing
+      # -------------------------------------------------------------------------
+      - name: Attach and Sign SBOM
+        run: |
+          # Attach SBOM to image
+          cosign attach sbom \
+            --sbom sbom/sbom.spdx.json \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+
+          # Sign the SBOM
+          cosign sign --yes \
+            --attachment sbom \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+
+      # -------------------------------------------------------------------------
+      # Verification
+      # -------------------------------------------------------------------------
+      - name: Verify Signature
+        run: |
+          cosign verify \
+            --key env://COSIGN_PUBLIC_KEY \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+        env:
+          COSIGN_PUBLIC_KEY: ${{ inputs.cosign-public-key }}
+
+      - name: Verify SBOM Attachment
+        run: |
+          cosign download sbom \
+            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+
+      - name: Signing Summary
+        run: |
+          echo "## 🟢 Image Signing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Key Signature | ✅ Signed |" >> $GITHUB_STEP_SUMMARY
+          echo "| SBOM Attachment | ✅ Attached & Signed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verification Commands" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# Verify signature" >> $GITHUB_STEP_SUMMARY
+          echo "cosign verify \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-identity='${{ github.actor }}' \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

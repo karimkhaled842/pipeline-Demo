@@ -1,0 +1,12 @@
+ignored:
+  - DL3008  # Pin versions in apt - build stage only, not in final image
+  - DL3013  # Pin versions in pip - build stage only, not in final image
+
+override:
+  # Allow unpinned versions in build stage (builder)
+  from:
+    - image: "python:*"
+      alias: "builder"
+      ignore:
+        - DL3008
+        - DL3013

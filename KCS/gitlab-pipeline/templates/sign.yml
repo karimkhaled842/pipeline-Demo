@@ -1,0 +1,71 @@
+---
+# ==============================================================================
+# Template: Sign Image
+# ==============================================================================
+# Signs container images and SBOMs using Cosign with:
+#   - Private key-based signing
+#   - SBOM attachment and signing
+#   - Signature verification
+#   - SBOM attachment verification
+#
+# Prerequisites — Set these GitLab CI/CD variables:
+#   COSIGN_PRIVATE_KEY: (file type, masked) Cosign private key
+#   COSIGN_PASSWORD: (masked) Password for the Cosign private key
+#   COSIGN_PUBLIC_KEY: Cosign public key for verification
+#   GHCR_USERNAME: GitHub username
+#   GHCR_PASSWORD: (masked) GitHub token with packages:write
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/sign.yml'
+#       ref: main
+# ==============================================================================
+
+sign:
+  stage: sign
+  needs:
+    - job: build
+      artifacts: true
+    - job: scan
+  tags:
+    - k8s
+
+  image:
+    name: bitnami/cosign:latest
+    entrypoint: [""]
+  variables:
+    COSIGN_PASSWORD: $COSIGN_PASSWORD
+    DOCKER_CONFIG: /tmp/docker-config
+    SSL_CERT_FILE: /tmp/ca-bundle.crt
+
+  # Run only on main or release/* branches
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /^release\//'
+    - when: never
+
+  before_script:
+    # Install Cosign
+    - mkdir -p /tmp/docker-config
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n $CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD | base64)\"}}}" > /tmp/docker-config/config.json
+    - echo "$COSIGN_PRIVATE_KEY" > /tmp/cosign.key
+    - echo "$COSIGN_PUBLIC_KEY" > /tmp/cosign.pub
+    - cat /etc/gitlab-runner/certs/gitlab.demo.lab.crt >>  /tmp/ca-bundle.crt
+    - export $(cat build.env | xargs)
+    - echo "Signing $IMAGE_DIGEST"
+
+
+  script:
+
+    - |
+      cosign sign \
+        --key /tmp/cosign.key \
+        --yes \
+        "$CI_REGISTRY_IMAGE@$IMAGE_DIGEST"
+
+    - |
+      cosign verify \
+        --key /tmp/cosign.pub \
+        "$CI_REGISTRY_IMAGE@$IMAGE_DIGEST"
+
+

@@ -1,0 +1,100 @@
+---
+parameters:
+  - name: registry
+    type: string
+  - name: imageName
+    type: string
+  - name: cosignPublicKey
+    type: string
+    default: ''
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download SBOM artifacts'
+    inputs:
+      artifact: sbom-artifacts
+      path: $(Build.ArtifactStagingDirectory)/sbom
+
+  - script: |
+      echo "$(GHCR_PAT)" | docker login ${{ parameters.registry }} -u "$(GHCR_USERNAME)" --password-stdin
+    displayName: 'Login to container registry'
+    env:
+      GHCR_PAT: $(GHCR_PAT)
+      GHCR_USERNAME: $(GHCR_USERNAME)
+
+  - script: |
+      curl -sSfL https://github.com/sigstore/cosign/releases/download/v2.2.4/cosign-linux-amd64 -o /usr/local/bin/cosign
+      chmod +x /usr/local/bin/cosign
+      cosign version
+    displayName: 'Install Cosign'
+
+  - script: |
+      IMAGE_NAME_LOWER=$(echo "${{ parameters.imageName }}" | tr '[:upper:]' '[:lower:]')
+      IMAGE_REF="${{ parameters.registry }}/${IMAGE_NAME_LOWER}@$(IMAGE_DIGEST)"
+
+      echo "$(COSIGN_PRIVATE_KEY)" > /tmp/cosign.key
+      echo "${{ parameters.cosignPublicKey }}" > /tmp/cosign.pub
+
+      cosign sign \
+        --key /tmp/cosign.key \
+        --annotations "repo=${{ parameters.imageName }}" \
+        --annotations "sha=$(Build.SourceVersion)" \
+        --annotations "ref=$(Build.SourceBranch)" \
+        --annotations "actor=$(Build.RequestedFor)" \
+        --annotations "run_id=$(Build.BuildId)" \
+        --annotations "run_number=$(Build.BuildNumber)" \
+        --yes \
+        "${IMAGE_REF}"
+    displayName: 'Sign image with private key'
+    env:
+      COSIGN_PRIVATE_KEY: $(COSIGN_PRIVATE_KEY)
+      COSIGN_PASSWORD: $(COSIGN_PASSWORD)
+
+  - script: |
+      IMAGE_NAME_LOWER=$(echo "${{ parameters.imageName }}" | tr '[:upper:]' '[:lower:]')
+      IMAGE_REF="${{ parameters.registry }}/${IMAGE_NAME_LOWER}@$(IMAGE_DIGEST)"
+
+      cosign attach sbom \
+        --sbom $(Build.ArtifactStagingDirectory)/sbom/sbom.spdx.json \
+        "${IMAGE_REF}"
+
+      cosign sign --yes \
+        --attachment sbom \
+        "${IMAGE_REF}"
+    displayName: 'Attach and sign SBOM'
+    env:
+      COSIGN_PRIVATE_KEY: $(COSIGN_PRIVATE_KEY)
+      COSIGN_PASSWORD: $(COSIGN_PASSWORD)
+
+  - script: |
+      IMAGE_NAME_LOWER=$(echo "${{ parameters.imageName }}" | tr '[:upper:]' '[:lower:]')
+      IMAGE_REF="${{ parameters.registry }}/${IMAGE_NAME_LOWER}@$(IMAGE_DIGEST)"
+
+      cosign verify \
+        --key /tmp/cosign.pub \
+        "${IMAGE_REF}"
+    displayName: 'Verify signature'
+    env:
+      COSIGN_PUBLIC_KEY: ${{ parameters.cosignPublicKey }}
+
+  - script: |
+      IMAGE_NAME_LOWER=$(echo "${{ parameters.imageName }}" | tr '[:upper:]' '[:lower:]')
+      IMAGE_REF="${{ parameters.registry }}/${IMAGE_NAME_LOWER}@$(IMAGE_DIGEST)"
+
+      cosign download sbom "${IMAGE_REF}"
+    displayName: 'Verify SBOM attachment'
+
+  - script: |
+      echo ""
+      echo "============================================"
+      echo "  Image Signing Summary"
+      echo "============================================"
+      echo "  Key Signature    | Signed"
+      echo "  SBOM Attachment  | Attached & Signed"
+      echo "============================================"
+      echo ""
+      echo "Verification commands:"
+      echo "  cosign verify --key /tmp/cosign.pub \\"
+      echo "    ${{ parameters.registry }}/$(IMAGE_NAME_LOWER)@$(IMAGE_DIGEST)"
+    displayName: 'Signing summary'
+    condition: always()

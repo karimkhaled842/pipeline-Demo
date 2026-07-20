@@ -1,0 +1,122 @@
+---
+parameters:
+  - name: registry
+    type: string
+  - name: imageName
+    type: string
+  - name: appName
+    type: string
+  - name: environment
+    type: string
+    default: 'development'
+  - name: overlay
+    type: string
+    default: 'dev'
+
+steps:
+  - script: |
+      IMAGE_NAME_LOWER=$(echo "${{ parameters.imageName }}" | tr '[:upper:]' '[:lower:]')
+      IMAGE_REF="${{ parameters.registry }}/${IMAGE_NAME_LOWER}@$(IMAGE_DIGEST)"
+      echo "Deploying: ${IMAGE_REF}"
+      echo "Environment: ${{ parameters.environment }}"
+      echo "Overlay: ${{ parameters.overlay }}"
+      echo "##vso[task.setvariable variable=IMAGE_NAME_LOWER]${IMAGE_NAME_LOWER}"
+      echo "##vso[task.setvariable variable=IMAGE_REF]${IMAGE_REF}"
+    displayName: 'Determine deployment parameters'
+
+  - script: |
+      kustomize build k8s/kyverno | kubectl apply -f -
+      kustomize build k8s/vault-eso | kubectl apply -f -
+    displayName: 'Setup secrets and project'
+    continueOnError: true
+
+  - script: |
+      cd k8s/overlays/${{ parameters.overlay }}
+      kustomize edit set image \
+        "${{ parameters.registry }}/$(IMAGE_NAME_LOWER)=$(IMAGE_REF)"
+    displayName: 'Update Kubernetes manifests'
+
+  - script: |
+      git config user.name "azure-devops[bot]"
+      git config user.email "azure-devops[bot]@users.noreply.github.com"
+
+      git add k8s/overlays/${{ parameters.overlay }}/
+
+      if git diff --staged --quiet; then
+        echo "No manifest changes to commit"
+      else
+        git commit -m "chore(deploy): promote image $(IMAGE_NAME_LOWER) to $(IMAGE_DIGEST) [skip ci]
+
+      Image       : $(IMAGE_REF)
+      Actor       : $(Build.RequestedFor)
+      Pipeline    : $(Build.BuildUri)
+      Commit      : $(Build.SourceVersion)
+      Ref         : $(Build.SourceBranch)"
+
+        git push origin HEAD:$(Build.SourceBranch)
+      fi
+    displayName: 'Commit manifest changes to SCM'
+    env:
+      GIT_TOKEN_COMMIT: $(GIT_TOKEN_COMMIT)
+
+  - script: |
+      kubectl port-forward -n argocd services/argocd-server 8080:80 &
+    displayName: 'Port-forward ArgoCD server'
+    continueOnError: true
+
+  - script: |
+      MAX_RETRIES=3
+      RETRY_COUNT=0
+
+      while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
+
+        if argocd app sync ${{ parameters.appName }} \
+          --server $(ARGOCD_SERVER) --auth-token $(ARGOCD_TOKEN) \
+          --insecure --force --timeout 300; then
+          echo "Sync initiated successfully"
+          break
+        fi
+
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+          echo "Retrying in 30 seconds..."
+          sleep 30
+        fi
+      done
+    displayName: 'Sync ArgoCD application'
+    env:
+      ARGOCD_TOKEN: $(ARGOCD_TOKEN)
+      ARGOCD_SERVER: $(ARGOCD_SERVER)
+
+  - script: |
+      argocd app wait ${{ parameters.appName }} \
+        --server $(ARGOCD_SERVER) --auth-token $(ARGOCD_TOKEN) \
+        --insecure --health --sync --timeout 600
+    displayName: 'Wait for ArgoCD sync'
+    env:
+      ARGOCD_TOKEN: $(ARGOCD_TOKEN)
+      ARGOCD_SERVER: $(ARGOCD_SERVER)
+
+  - script: |
+      echo ""
+      echo "============================================"
+      echo "  Deployment Status"
+      echo "============================================"
+      argocd app get ${{ parameters.appName }} -o wide
+
+      HEALTH=$(argocd app get ${{ parameters.appName }} -o json | jq -r '.status.health.status')
+      SYNC=$(argocd app get ${{ parameters.appName }} -o json | jq -r '.status.sync.status')
+
+      echo "--------------------------------------------"
+      echo "  Health:  ${HEALTH}"
+      echo "  Sync:    ${SYNC}"
+      echo "  Image:   $(IMAGE_REF)"
+      echo "============================================"
+    displayName: 'Get application status'
+    continueOnError: true
+
+  - script: |
+      echo "Deployment completed successfully"
+    displayName: 'Notify deployment'
+    condition: always()

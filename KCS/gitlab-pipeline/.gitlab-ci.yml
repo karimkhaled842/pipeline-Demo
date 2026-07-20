@@ -1,0 +1,77 @@
+---
+# ==============================================================================
+# GitLab CI: DevSecOps Pipeline (Main Orchestrator)
+# ==============================================================================
+# This is the main pipeline definition. It includes reusable templates for each
+# stage and defines the overall workflow rules, variables, and stage ordering.
+#
+# Cross-repo usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '//.gitlab-ci.yml'
+#       ref: main
+# ==============================================================================
+
+# ---------------------------------------------------------------------------
+# Workflow Rules — determines when the pipeline runs
+# Equivalent of GitHub: push branches, pull_request, workflow_dispatch
+# ---------------------------------------------------------------------------
+workflow:
+  rules:
+    # Push to main, develop, or release/*
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+    # Merge request targeting main
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+    # Manual trigger (equivalent to workflow_dispatch)
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    # Scheduled pipelines
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    # Default: don't run for other cases
+    - when: never
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# Equivalent of GitHub: env: block
+# ---------------------------------------------------------------------------
+variables:
+  IMAGE_NAME: "${CI_REGISTRY_IMAGE}"
+  COSIGN_EXPERIMENTAL: "true"
+  SYFT_FORMAT: spdx-json
+  APP_NAME: secureapp-dev
+  SONAR_HOST_URL: https://sonarcloud.io
+
+
+  # Git strategy
+  GIT_DEPTH: "0"
+  GIT_STRATEGY: clone
+
+# ---------------------------------------------------------------------------
+# Pipeline Stages (in order)
+# ---------------------------------------------------------------------------
+stages:
+  - lint
+  - test
+  - build
+  - scan
+  - sign
+
+
+# ---------------------------------------------------------------------------
+# Cancel in-progress runs for the same branch
+# Equivalent of GitHub: concurrency.cancel-in-progress
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Template Includes — modular reusable workflows
+# Each template can be used independently by other repos via:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '//templates/<name>.yml'
+#       ref: main
+# ---------------------------------------------------------------------------
+include:
+  - local: templates/lint.yml
+  - local: templates/test.yml
+  - local: templates/build.yml
+  - local: templates/scan.yml
+  - local: templates/sign.yml

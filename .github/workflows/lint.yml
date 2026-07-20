@@ -1,0 +1,132 @@
+# ==============================================================================
+# Reusable Workflow: Lint
+# ==============================================================================
+# Performs comprehensive linting across multiple languages and frameworks:
+#   - Python: ruff, flake8, mypy, bandit, pydocstyle, isort
+#   - Docker: hadolint
+#   - YAML: yamllint
+#   - Markdown: markdownlint
+#   - IaC: Checkov (Kubernetes security scanning)
+#
+# Usage:
+#   jobs:
+#     lint:
+#       uses: <org>/<repo>/.github/workflows/lint.yml@main
+#       with:
+#         python-version: '3.12'
+#         fetch-depth: 0
+# ==============================================================================
+
+name: "Reusable - Lint"
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to use for linting tools"
+        type: string
+        required: false
+        default: "3.12"
+      fetch-depth:
+        description: "Git fetch depth for checkout"
+        type: number
+        required: false
+        default: 0
+
+# Minimum required permissions
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  lint:
+    name: "🔴 Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/app/requirements.txt
+          pip install ruff flake8 mypy bandit pylint pydocstyle black isort lxml
+
+      - name: Run Ruff (Fast Python Linter)
+        run: |
+          ruff check src/ --output-format=github --exit-zero
+          ruff format --check src/ --diff
+
+      - name: Run Flake8
+        run: |
+          flake8 src/ --format=github --exit-zero --max-line-length=120 \
+            --ignore=E501,W503,E203
+
+      - name: Run Mypy (Type Checking)
+        run: |
+          mypy src/ --ignore-missing-imports --no-error-summary \
+            --html-report=mypy-report || true
+
+      - name: Run Bandit (Security Linting)
+        run: |
+          bandit -r src/ -f json -o bandit-report.json || true
+          bandit -r src/ -ll
+
+      - name: Run pydocstyle (Documentation Linting)
+        run: |
+          pydocstyle src/ --convention=pep257 --add-ignore=D100,D101,D102,D103,D104,D105,D107 || true
+
+      - name: Check Imports with isort
+        run: |
+          isort --check-only --diff src/ || true
+
+      - name: Run hadolint (Dockerfile Linting)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          failure-threshold: warning
+          format: tty
+
+      - name: Run yamllint (YAML Linting)
+        uses: karancode/yamllint-github-action@master
+        with:
+          yamllint_strict: false
+          yamllint_config_file: .yamllint
+          yamllint_file_or_dir: k8s/
+
+      - name: Run markdownlint (Markdown Linting)
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: "**/*.md"
+          config: ".markdownlint.json"
+        continue-on-error: true
+
+      - name: Checkov (IaC Security Scanning)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: k8s/
+          framework: kubernetes
+          output_format: cli,sarif
+          output_file_path: console,checkov-results.sarif
+          skip_check: CKV_K8S_21,CKV_K8S_22,CKV_K8S_15,CKV_K8S_40,CKV_K8S_43,CKV_K8S_35,CKV2_K8S_6,CKV_K8S_38
+        continue-on-error: true
+
+      - name: Upload Lint Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: |
+            bandit-report.json
+            pylint-results.json
+            mypy-report/
+            checkov-results.sarif
+          retention-days: 30

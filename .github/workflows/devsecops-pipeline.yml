@@ -1,0 +1,143 @@
+name: DevSecOps Pipeline
+on:
+  push:
+    branches: [ main, develop, release/* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum permissions required
+permissions:
+  contents: write
+  security-events: write
+  id-token: write
+  packages: write
+  attestations: write
+  actions: write
+  checks: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  COSIGN_EXPERIMENTAL: "true"
+  SYFT_FORMAT: "spdx-json"
+  APP_NAME: secureapp-dev
+  SONAR_HOST_URL: https://sonarcloud.io
+
+jobs:
+  # ============================================================================
+  # STAGE 1: LINT
+  # ============================================================================
+  lint:
+    name: "🔴 Lint"
+    uses: ./.github/workflows/lint.yml
+    with:
+      python-version: "3.12"
+
+  # ============================================================================
+  # STAGE 2: TEST
+  # ============================================================================
+  test:
+    name: "🟡 Test"
+    needs: lint
+    uses: ./.github/workflows/test.yml
+    with:
+      python-version: "3.12"
+
+  # ============================================================================
+  # STAGE 3: SONARQUBE
+  # ============================================================================
+  sonarqube:
+    name: "🟠 SonarQube"
+    needs: test
+    uses: ./.github/workflows/sonarqube.yml
+    with:
+      python-version: "3.12"
+      sonar-host-url: 'https://sonarcloud.io'
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ============================================================================
+  # STAGE 4: BUILD IMAGES WITH SBOM
+  # ============================================================================
+  build:
+    name: "🔵 Build & SBOM"
+    needs: sonarqube
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref,
+      'refs/heads/release/')
+    uses: ./.github/workflows/build.yml
+    with:
+      registry: 'ghcr.io'
+      image-name: ${{ github.repository }}
+
+  # ============================================================================
+  # STAGE 5: SCAN IMAGES WITH MULTIPLE TOOLS
+  # ============================================================================
+  scan:
+    name: "🟣 Image Scan"
+    needs: build
+    uses: ./.github/workflows/scan.yml
+    with:
+      registry: 'ghcr.io'
+      image-name: ${{ github.repository }}
+      image-tag: ${{ needs.build.outputs.image-tag }}
+
+  # ============================================================================
+  # STAGE 6: SIGN WITH COSIGN
+  # ============================================================================
+  sign:
+    name: "🟢 Sign Image"
+    needs: [ scan, build ]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref,
+      'refs/heads/release/')
+    uses: ./.github/workflows/sign.yml
+    with:
+      registry: 'ghcr.io'
+      image-name: ${{ github.repository }}
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      cosign-public-key: ${{ vars.COSIGN_PUBLIC_KEY }}
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+  # ============================================================================
+  # STAGE 7: DEPLOY WITH ARGOCD
+  # ============================================================================
+  deploy:
+    name: "🚀 Deploy"
+    needs: [ sign, build ]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      registry: 'ghcr.io'
+      image-name: ${{ github.repository }}
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      app-name: 'secureapp-dev'
+      environment: 'development'
+      overlay: 'dev'
+    secrets:
+      GIT_TOKEN_COMMIT: ${{ secrets.GIT_TOKEN_COMMIT }}
+      ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+      ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+
+  # ============================================================================
+  # SECURITY SUMMARY
+  # ============================================================================
+  security-summary:
+    name: "📋 Security Summary"
+    needs: [ lint, test, sonarqube, build, scan, sign, deploy ]
+    if: always()
+    uses: ./.github/workflows/security-summary.yml
+    with:
+      lint-status: ${{ needs.lint.result }}
+      test-status: ${{ needs.test.result }}
+      sonarqube-status: ${{ needs.sonarqube.result }}
+      build-status: ${{ needs.build.result }}
+      scan-status: ${{ needs.scan.result }}
+      sign-status: ${{ needs.sign.result }}
+      deploy-status: ${{ needs.deploy.result }}

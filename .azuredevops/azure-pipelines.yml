@@ -1,0 +1,164 @@
+---
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: $(Build.Repository.Name)
+  APP_NAME: secureapp-dev
+  SONAR_HOST_URL: https://sonarcloud.io
+  pythonVersion: '3.12'
+
+pool:
+  name: self-hosted
+
+stages:
+  - stage: Lint
+    displayName: 'Lint'
+    jobs:
+      - job: LintJob
+        displayName: 'Lint'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+          - template: templates/lint.yml
+            parameters:
+              pythonVersion: $(pythonVersion)
+
+  - stage: Test
+    displayName: 'Test'
+    dependsOn: Lint
+    jobs:
+      - job: TestJob
+        displayName: 'Test'
+        services:
+          postgres: postgres:16-alpine
+          redis: redis:7-alpine
+        variables:
+          DATABASE_URL: postgresql://test_user:test_password@postgres:5432/test_db
+          REDIS_URL: redis://redis:6379/0
+          ENVIRONMENT: testing
+        steps:
+          - checkout: self
+            clean: true
+          - template: templates/test.yml
+            parameters:
+              pythonVersion: $(pythonVersion)
+              coverageThresholdUnit: 80
+              coverageThresholdIntegration: 70
+
+  - stage: SonarQube
+    displayName: 'SonarQube'
+    dependsOn: Test
+    jobs:
+      - job: SonarQubeJob
+        displayName: 'SonarQube'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+          - template: templates/sonarqube.yml
+            parameters:
+              pythonVersion: $(pythonVersion)
+              sonarHostUrl: $(SONAR_HOST_URL)
+
+  - stage: Build
+    displayName: 'Build & SBOM'
+    dependsOn: SonarQube
+    condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+    jobs:
+      - job: BuildJob
+        displayName: 'Build & SBOM'
+        steps:
+          - checkout: self
+            clean: true
+          - template: templates/build.yml
+            parameters:
+              registry: $(REGISTRY)
+              imageName: $(IMAGE_NAME)
+
+  - stage: Scan
+    displayName: 'Image Scan'
+    dependsOn: Build
+    jobs:
+      - job: ScanJob
+        displayName: 'Image Scan'
+        variables:
+          IMAGE_TAG: $[stageDependencies.Build.BuildJob.outputs['setOutputs.IMAGE_TAG']]
+        steps:
+          - checkout: self
+            clean: true
+          - template: templates/scan.yml
+            parameters:
+              registry: $(REGISTRY)
+              imageName: $(IMAGE_NAME)
+
+  - stage: Sign
+    displayName: 'Sign Image'
+    dependsOn:
+      - Build
+      - Scan
+    condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))
+    jobs:
+      - job: SignJob
+        displayName: 'Sign Image'
+        variables:
+          IMAGE_DIGEST: $[stageDependencies.Build.BuildJob.outputs['setOutputs.IMAGE_DIGEST']]
+        steps:
+          - checkout: self
+            clean: true
+          - template: templates/sign.yml
+            parameters:
+              registry: $(REGISTRY)
+              imageName: $(IMAGE_NAME)
+              cosignPublicKey: $(COSIGN_PUBLIC_KEY)
+
+  - stage: Deploy
+    displayName: 'Deploy'
+    dependsOn:
+      - Build
+      - Sign
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy'
+        variables:
+          IMAGE_DIGEST: $[stageDependencies.Build.BuildJob.outputs['setOutputs.IMAGE_DIGEST']]
+        steps:
+          - checkout: self
+            persistCredentials: true
+            clean: true
+          - template: templates/deploy.yml
+            parameters:
+              registry: $(REGISTRY)
+              imageName: $(IMAGE_NAME)
+              appName: $(APP_NAME)
+              environment: development
+              overlay: dev
+
+  - stage: SecuritySummary
+    displayName: 'Security Summary'
+    dependsOn:
+      - Lint
+      - Test
+      - SonarQube
+      - Build
+      - Scan
+      - Sign
+      - Deploy
+    condition: always()
+    jobs:
+      - job: SecuritySummaryJob
+        displayName: 'Security Summary'
+        steps:
+          - template: templates/security-summary.yml

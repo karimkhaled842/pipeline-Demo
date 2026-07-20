@@ -1,0 +1,47 @@
+---
+# ==============================================================================
+# Template: Image Scan
+# ==============================================================================
+# Scans container images for vulnerabilities, secrets, and misconfigurations:
+#   - Trivy Vulnerability Scanner (OS & library)
+#   - Trivy Config Scanner (Kubernetes manifests)
+#   - Trivy Secret Scanner
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/scan.yml'
+#       ref: main
+# ==============================================================================
+
+scan:
+  stage: scan
+  needs: [build]
+  tags:
+    - k8s
+  image:
+    name: repo.kcs.kaspersky.com/images/scanner:v2.4.0-with-db
+    entrypoint: [""]
+    pull_policy: if-not-present
+  variables:
+    SCAN_TARGET: ${CI_REGISTRY_IMAGE}:$CI_COMMIT_SHORT_SHA
+    BUILD_NUMBER: ${CI_JOB_ID}
+    BUILD_PIPELINE: ${CI_PIPELINE_ID}
+    API_TOKEN: ${API_TOKEN}
+    API_CA_CERT: ${API_CA_CERT}
+    COMPANY_EXT_REGISTRY_USERNAME: ${COMPANY_EXT_REGISTRY_USERNAME}
+    COMPANY_EXT_REGISTRY_PASSWORD: ${COMPANY_EXT_REGISTRY_PASSWORD}
+    API_BASE_URL: https://kcs.demo.lab
+    RUST_BACKTRACE: full
+  script:
+    - /bin/sh /entrypoint.sh $SCAN_TARGET --stdout > somefile.json
+    #for debugging
+    #- /bin/sh /entrypoint.sh $SCAN_TARGET --stdout --debug #> somefile.json
+    #for the SBOM mode uncomment the next line and comment the line above
+    #- /bin/sh /entrypoint.sh $SCAN_TARGET --sbom-json --stdout > somefile.json
+  artifacts:
+    paths:
+      - somefile.json
+
+
+

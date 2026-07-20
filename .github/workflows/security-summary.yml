@@ -1,0 +1,98 @@
+# ==============================================================================
+# Reusable Workflow: Security Summary
+# ==============================================================================
+# Generates a comprehensive security pipeline summary report:
+#   - Aggregates results from all pipeline stages
+#   - Displays status table (pass/fail/skip for each stage)
+#   - Lists generated artifacts
+#   - Fails the pipeline if any critical stage failed
+#
+# Usage:
+#   jobs:
+#     security-summary:
+#       uses: <org>/<repo>/.github/workflows/security-summary.yml@main
+#       with:
+#         lint-status: ${{ needs.lint.result }}
+#         test-status: ${{ needs.test.result }}
+#         sonarqube-status: ${{ needs.sonarqube.result }}
+#         build-status: ${{ needs.build.result }}
+#         scan-status: ${{ needs.scan.result }}
+#         sign-status: ${{ needs.sign.result }}
+#         deploy-status: ${{ needs.deploy.result }}
+# ==============================================================================
+
+name: "Reusable - Security Summary"
+
+on:
+  workflow_call:
+    inputs:
+      lint-status:
+        description: "Result of the lint job (success/failure/skipped/cancelled)"
+        type: string
+        required: true
+      test-status:
+        description: "Result of the test job"
+        type: string
+        required: true
+      sonarqube-status:
+        description: "Result of the sonarqube job"
+        type: string
+        required: true
+      build-status:
+        description: "Result of the build job"
+        type: string
+        required: true
+      scan-status:
+        description: "Result of the scan job"
+        type: string
+        required: true
+      sign-status:
+        description: "Result of the sign job"
+        type: string
+        required: true
+      deploy-status:
+        description: "Result of the deploy job"
+        type: string
+        required: true
+
+# Minimum required permissions
+permissions:
+  contents: write
+
+jobs:
+  security-summary:
+    name: "📋 Security Summary"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Security Report
+        run: |
+          echo "## 📋 Complete Security Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 Lint | ${{ inputs.lint-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 Test | ${{ inputs.test-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 SonarQube | ${{ inputs.sonarqube-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔵 Build & SBOM | ${{ inputs.build-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟣 Image Scan | ${{ inputs.scan-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟢 Sign | ${{ inputs.sign-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🚀 Deploy | ${{ inputs.deploy-status == 'success' && '✅ Passed' || inputs.deploy-status == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint Reports (Bandit, Pylint, Mypy)" >> $GITHUB_STEP_SUMMARY
+          echo "- Test Coverage Reports" >> $GITHUB_STEP_SUMMARY
+          echo "- SonarQube Analysis with AI Suggestions" >> $GITHUB_STEP_SUMMARY
+          echo "- SBOM (SPDX, CycloneDX formats)" >> $GITHUB_STEP_SUMMARY
+          echo "- Vulnerability Scan Reports (Trivy, Grype, Snyk, Anchore)" >> $GITHUB_STEP_SUMMARY
+          echo "- Container Image Signatures" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Pipeline Result
+        if: |
+          inputs.lint-status == 'failure' ||
+          inputs.test-status == 'failure' ||
+          inputs.sonarqube-status == 'failure' ||
+          inputs.scan-status == 'failure' ||
+          inputs.sign-status == 'failure'
+        run: |
+          echo "::error::Security pipeline failed. Review the failed stages above."
+          exit 1

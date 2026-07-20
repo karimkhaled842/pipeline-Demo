@@ -1,0 +1,81 @@
+---
+# ==============================================================================
+# Template: Lint
+# ==============================================================================
+# Performs comprehensive linting across multiple languages and frameworks:
+#   - Python: ruff, flake8, mypy, bandit, pydocstyle, isort
+#   - Docker: hadolint
+#   - YAML: yamllint
+#   - Markdown: markdownlint
+#   - IaC: Checkov (Kubernetes security scanning)
+#
+# Usage:
+#   include:
+#     - project: 'ahmed-magdi2712/DevSecOps-Usecase'
+#       file: '/gitlab_ci/templates/lint.yml'
+#       ref: main
+# ==============================================================================
+
+lint:
+  stage: lint
+  image: python:3.12
+  tags:
+    - k8s
+
+  interruptible: true
+
+  before_script:
+    # Upgrade pip and install Python linting tools
+    - pip install --upgrade pip
+    - pip install -r src/app/requirements.txt
+    - pip install ruff flake8 mypy bandit pylint pydocstyle black isort lxml yamllint
+
+    # Install hadolint (Dockerfile linter)
+    - |
+      HADOLINT_VER=$(curl -sL https://api.github.com/repos/hadolint/hadolint/releases/latest | grep tag_name | cut -d'"' -f4)
+    - |
+      wget -q "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VER}/hadolint-Linux-x86_64" -O /usr/local/bin/hadolint
+    - chmod +x /usr/local/bin/hadolint
+
+    # Install markdownlint-cli2
+    - apt-get update && apt-get install -y --no-install-recommends nodejs npm
+    - npm install -g markdownlint-cli2
+
+    # Install Checkov
+    - pip install checkov
+
+  script:
+    # ---- Python Linters ----
+    - echo "=== Ruff (Fast Python Linter) ==="
+    - ruff check src/ --exit-zero
+    - ruff format --check src/ --diff || true
+
+    - echo "=== Flake8 ==="
+    - flake8 src/ --exit-zero --max-line-length=120 --ignore=E501,W503,E203
+
+    - echo "=== Mypy (Type Checking) ==="
+    - mypy src/ --ignore-missing-imports --no-error-summary --html-report=mypy-report || true
+
+    - echo "=== Bandit (Security Linting) ==="
+    - bandit -r src/ -f json -o bandit-report.json || true
+    - bandit -r src/ -ll || true
+
+    - echo "=== pydocstyle (Documentation Linting) ==="
+    - pydocstyle src/ --convention=pep257 --add-ignore=D100,D101,D102,D103,D104,D105,D107 || true
+
+    - echo "=== isort (Import Sorting) ==="
+    - isort --check-only --diff src/ || true
+
+    # ---- Dockerfile Lint ----
+    - echo "=== hadolint (Dockerfile Linting) ==="
+    - hadolint docker/Dockerfile --failure-threshold warning
+
+
+
+  artifacts:
+    paths:
+      - bandit-report.json
+      - mypy-report/
+      - checkov-results.sarif
+    expire_in: 30 days
+    when: always

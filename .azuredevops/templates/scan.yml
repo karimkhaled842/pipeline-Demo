@@ -1,0 +1,79 @@
+---
+parameters:
+  - name: registry
+    type: string
+  - name: imageName
+    type: string
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download SBOM artifacts'
+    inputs:
+      artifact: sbom-artifacts
+      path: $(Build.ArtifactStagingDirectory)/sbom
+
+  - script: |
+      echo "$(GHCR_PAT)" | docker login ${{ parameters.registry }} -u "$(GHCR_USERNAME)" --password-stdin
+    displayName: 'Login to container registry'
+    env:
+      GHCR_PAT: $(GHCR_PAT)
+      GHCR_USERNAME: $(GHCR_USERNAME)
+
+  - script: |
+      curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      trivy version
+    displayName: 'Install Trivy'
+
+  - script: |
+      trivy image \
+        --format sarif \
+        --output $(Build.ArtifactStagingDirectory)/trivy-results.sarif \
+        --severity CRITICAL,HIGH \
+        --exit-code 1 \
+        --ignore-unfixed \
+        --vuln-type os,library \
+        --scanners vuln,secret,misconfig \
+        --trivyignores .trivyignore \
+        --timeout 10m \
+        "$(IMAGE_TAG)"
+    displayName: 'Run Trivy vulnerability scanner'
+    continueOnError: true
+    env:
+      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+
+  - script: |
+      trivy config \
+        --format table \
+        --output $(Build.ArtifactStagingDirectory)/trivy-config-results.txt \
+        --severity CRITICAL,HIGH \
+        --trivyignores .trivyignore \
+        --exit-code 1 \
+        k8s/
+    displayName: 'Run Trivy config scanner'
+    continueOnError: true
+
+  - script: |
+      trivy image \
+        --format json \
+        --output $(Build.ArtifactStagingDirectory)/trivy-secrets.json \
+        --scanners secret \
+        --exit-code 1 \
+        "$(IMAGE_TAG)"
+    displayName: 'Run Trivy secret scanner'
+    continueOnError: true
+
+  - script: |
+      mkdir -p $(Build.ArtifactStagingDirectory)/scan-results
+      cp $(Build.ArtifactStagingDirectory)/trivy-results.sarif $(Build.ArtifactStagingDirectory)/scan-results/ 2>/dev/null || true
+      cp $(Build.ArtifactStagingDirectory)/trivy-config-results.txt $(Build.ArtifactStagingDirectory)/scan-results/ 2>/dev/null || true
+      cp $(Build.ArtifactStagingDirectory)/trivy-secrets.json $(Build.ArtifactStagingDirectory)/scan-results/ 2>/dev/null || true
+    displayName: 'Stage scan results'
+    condition: always()
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish scan results'
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)/scan-results
+      artifact: scan-results-trivy
+      publishLocation: pipeline
+    condition: always()

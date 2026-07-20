@@ -1,0 +1,89 @@
+---
+parameters:
+  - name: pythonVersion
+    type: string
+    default: '3.12'
+  - name: sonarHostUrl
+    type: string
+    default: 'https://sonarcloud.io'
+  - name: sonarScannerVersion
+    type: string
+    default: '6.2.1.4610'
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: 'Use Python ${{ parameters.pythonVersion }}'
+    inputs:
+      versionSpec: ${{ parameters.pythonVersion }}
+      addToPath: true
+      architecture: 'x64'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r src/app/requirements.txt
+    displayName: 'Install Python dependencies'
+
+  - script: |
+      SONAR_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${{ parameters.sonarScannerVersion }}-linux-x64.zip"
+      wget -q "${SONAR_URL}"
+      unzip -q "sonar-scanner-cli-${{ parameters.sonarScannerVersion }}-linux-x64.zip"
+      echo "##vso[task.prependpath]$(System.DefaultWorkingDirectory)/sonar-scanner-${{ parameters.sonarScannerVersion }}-linux-x64/bin"
+    displayName: 'Install SonarScanner CLI'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download test reports'
+    inputs:
+      artifact: test-reports
+      path: $(Build.ArtifactStagingDirectory)/reports
+    condition: always()
+
+  - script: |
+      sonar-scanner \
+        -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
+        -Dsonar.token=$(SONAR_TOKEN) \
+        -Dsonar.projectBaseDir=. \
+        -Dsonar.scm.revision=$(Build.SourceVersion) \
+        -Dsonar.python.coverage.reportPaths=$(Build.ArtifactStagingDirectory)/reports/coverage.xml \
+        -Dsonar.qualitygate.wait=true \
+        -Dsonar.qualitygate.timeout=300
+    displayName: 'Run SonarQube scan'
+    env:
+      SONAR_TOKEN: $(SONAR_TOKEN)
+
+  - script: |
+      if [ -f ".scannerwork/report-task.txt" ]; then
+        PROJECT_KEY=$(grep "^projectKey=" .scannerwork/report-task.txt | cut -d= -f2-)
+        DASHBOARD_URL=$(grep "^dashboardUrl=" .scannerwork/report-task.txt | cut -d= -f2-)
+        METRICS="bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,security_hotspots"
+
+        curl -s -u "$(SONAR_TOKEN):" \
+          "${{ parameters.sonarHostUrl }}/api/measures/component?component=${PROJECT_KEY}&metricKeys=${METRICS}" \
+          > $(Build.ArtifactStagingDirectory)/sonar-metrics.json
+
+        python3 << 'PYEOF'
+      import json
+      with open("$(Build.ArtifactStagingDirectory)/sonar-metrics.json") as f:
+          data = json.load(f)
+      seen = {}
+      for m in data.get("component", {}).get("measures", []):
+          seen[m["metric"]] = m["value"]
+
+      print("\n============================================")
+      print("  SonarQube Analysis Results")
+      print("  Dashboard: ${DASHBOARD_URL}")
+      print("============================================")
+      print(f"  Bugs:              {seen.get('bugs', 'N/A')}")
+      print(f"  Vulnerabilities:   {seen.get('vulnerabilities', 'N/A')}")
+      print(f"  Security Hotspots: {seen.get('security_hotspots', 'N/A')}")
+      print(f"  Code Smells:       {seen.get('code_smells', 'N/A')}")
+      print(f"  Coverage:          {seen.get('coverage', 'N/A')}%")
+      print(f"  Duplication:       {seen.get('duplicated_lines_density', 'N/A')}%")
+      print("============================================\n")
+      PYEOF
+      else
+        echo "No scannerwork report found -- skipping metrics summary"
+      fi
+    displayName: 'Publish SonarQube metrics summary'
+    env:
+      SONAR_TOKEN: $(SONAR_TOKEN)
+    condition: always()

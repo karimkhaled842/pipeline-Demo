@@ -1,0 +1,135 @@
+# ==============================================================================
+# Reusable Workflow: Image Scan
+# ==============================================================================
+# Scans container images for vulnerabilities, secrets, and misconfigurations:
+#   - Trivy Vulnerability Scanner (OS & library)
+#   - Trivy Config Scanner (Kubernetes manifests)
+#   - Trivy Secret Scanner
+#   - SARIF upload to GitHub Security tab
+#
+# Usage:
+#   jobs:
+#     scan:
+#       uses: <org>/<repo>/.github/workflows/scan.yml@main
+#       with:
+#         registry: ghcr.io
+#         image-name: ${{ github.repository }}
+#         image-tag: ${{ needs.build.outputs.image-tag }}
+# ==============================================================================
+
+name: "Reusable - Image Scan"
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry hostname"
+        type: string
+        required: true
+      image-name:
+        description: "Image repository name (e.g., org/repo)"
+        type: string
+        required: true
+      image-tag:
+        description: "Docker image tag(s) to scan"
+        type: string
+        required: true
+
+# Minimum required permissions
+permissions:
+  contents: write
+  security-events: write
+  packages: write
+
+jobs:
+  scan:
+    name: "🟣 Image Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: sbom/
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------------------------------------------------------
+      # TRIVY SCANNER
+      # -------------------------------------------------------------------------
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: "image"
+          image-ref: "${{ inputs.image-tag }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          scanners: "vuln,secret,misconfig"
+          trivyignores: ".trivyignore"
+          timeout: "10m"
+          cache: "false"
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+
+      - name: Run Trivy Config Scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: "config"
+          scan-ref: "k8s/"
+          format: "table"
+          output: "trivy-config-results.txt"
+          severity: "CRITICAL,HIGH"
+          trivyignores: ".trivyignore"
+          exit-code: "1"
+
+      - name: Run Trivy Secret Scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: "image"
+          image-ref: "${{ inputs.image-tag }}"
+          format: "json"
+          output: "trivy-secrets.json"
+          scanners: "secret"
+          exit-code: "1"
+
+      - name: Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+      # -------------------------------------------------------------------------
+      # Common Steps
+      # -------------------------------------------------------------------------
+      - name: Upload Scan Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan-results-trivy
+          path: |
+            *-results.*
+            *-results.json
+          retention-days: 90
+
+      - name: Scan Summary
+        if: always()
+        run: |
+          echo "## 🟣 Trivy Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "*-results.txt" ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat *-results.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi

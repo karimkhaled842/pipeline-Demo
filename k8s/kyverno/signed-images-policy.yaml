@@ -1,0 +1,51 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedImageValidatingPolicy
+metadata:
+  name: verify-image-signed-registry
+  namespace: secureapp-dev
+  annotations:
+    policies.kyverno.io/title: Verify Image Signature and Registry
+    policies.kyverno.io/description: >
+      Ensures all container images are pulled from a trusted registry
+      and are signed with a valid Cosign signature.
+spec:
+  webhookConfiguration:
+    timeoutSeconds: 15
+  evaluation:
+    background:
+      enabled: false
+  validationActions: [Audit]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+      # - apiGroups: ['']
+      #   apiVersions: ['v1']
+      #   operations: ["CREATE", "UPDATE"]
+      #   resources: ["pods"]
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: secureapp-dev
+  matchImageReferences:
+    - glob: "ghcr.io/ahmed-magdi2712/devsecops-usecase*" # ✅ Only this registry is allowed
+  attestors:
+    - name: "attestor"
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEts83RWM23QrJW4KX78bs1ljIvsjF
+            BiGamz8zn3dxHmCulcllP5L4FHpi3IBzqNHZfpH/X9SC4WA8UwjaGXsmQw==
+            -----END PUBLIC KEY-----
+  # attestations:
+  #   - name: sbom # Logical name for this attestation
+  #     referrer: # Uses OCI artifact type for verification
+  #       type: sbom/spdx
+  validations:
+    - expression: >
+        images.containers.map(image, verifyImageSignatures(image, [attestors.attestor])).all(e, e > 0)
+      message: "Container image must be signed by the trusted key"
+
