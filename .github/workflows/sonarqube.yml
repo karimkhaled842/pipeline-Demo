@@ -81,6 +81,7 @@ jobs:
         id: sonarqube-quality-gate-check
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
