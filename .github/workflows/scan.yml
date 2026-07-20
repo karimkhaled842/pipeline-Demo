@@ -56,6 +56,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug image-tag value
+        run: |
+          echo "inputs.image-tag = '${{ inputs.image-tag }}'"
+          echo "inputs.registry = '${{ inputs.registry }}'"
+          echo "inputs.image-name = '${{ inputs.image-name }}'"
+
       - name: Download SBOM
         uses: actions/download-artifact@v4
         with:

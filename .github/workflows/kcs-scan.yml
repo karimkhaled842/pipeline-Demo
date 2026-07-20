@@ -81,6 +81,9 @@ jobs:
           KCS_PASS: ${{ secrets.KCS_REGISTRY_PASSWORD }}
         run: docker login repo.kcs.kaspersky.com -u "$KCS_USER" -p "$KCS_PASS"
 
+      - name: Debug SCAN_TARGET
+        run: echo "SCAN_TARGET='${SCAN_TARGET}'"
+
       - name: Run KCS Scanner (JSON report)
         run: |
           docker run --rm \
