@@ -117,10 +117,6 @@ jobs:
           chmod 600 ~/.kube/config
           kubectl get nodes
 
-      - name: Setup Secrets and Project
-        run: |
-          kustomize build k8s/kyverno | kubectl apply -f -
-          kustomize build k8s/vault-eso | kubectl apply -f -
 
       - name: Update Kubernetes Manifests
         run: |
