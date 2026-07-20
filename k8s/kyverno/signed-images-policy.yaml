@@ -22,10 +22,10 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["deployments"]
-      # - apiGroups: ['']
-      #   apiVersions: ['v1']
-      #   operations: ["CREATE", "UPDATE"]
-      #   resources: ["pods"]
+        # - apiGroups: ['']
+        #   apiVersions: ['v1']
+        #   operations: ["CREATE", "UPDATE"]
+        #   resources: ["pods"]
     namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: secureapp-dev
