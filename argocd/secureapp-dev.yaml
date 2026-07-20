@@ -10,7 +10,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/ahmed-magdi2712/DevSecOps-Usecase.git
+    repoURL: https://github.com/karimkhaled842/pipeline-Demo.git
     targetRevision: main
     path: k8s/overlays/dev
   destination:

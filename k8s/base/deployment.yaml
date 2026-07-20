@@ -29,7 +29,7 @@ spec:
         prometheus.io/path: "/api/v1/metrics"
     spec:
       imagePullSecrets:
-        - name: ghcr-secret
+        - name: dockerhub-secret
       serviceAccountName: secureapp
       automountServiceAccountToken: false
       securityContext:
@@ -41,7 +41,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/ahmed-magdi2712/devsecops-usecase:v1.0.1
+          image: karimkhaled842/pipeline-demo:v1.0.1
           imagePullPolicy: Always
           ports:
             - name: http

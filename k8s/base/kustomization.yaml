@@ -8,4 +8,5 @@ resources:
   - postgres.yaml
   - redis.yaml
   - configmap.yaml
+  - dockerhub-secret.yaml
 

@@ -13,8 +13,8 @@
 #     deploy:
 #       uses: <org>/<repo>/.github/workflows/deploy.yml@main
 #       with:
-#         registry: ghcr.io
-#         image-name: ${{ github.repository }}
+#         registry: docker.io
+#         image-name: karimkhaled842/pipeline-demo
 #         image-digest: ${{ needs.build.outputs.image-digest }}
 #         app-name: secureapp-dev
 #         environment: development
@@ -23,6 +23,7 @@
 #         GIT_TOKEN_COMMIT: ${{ secrets.GIT_TOKEN_COMMIT }}
 #         ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
 #         ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+#         KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
 # ==============================================================================
 
 name: "Reusable - Deploy"
@@ -35,7 +36,7 @@ on:
         type: string
         required: true
       image-name:
-        description: "Image repository name (e.g., org/repo)"
+        description: "Image repository name (e.g., namespace/repo)"
         type: string
         required: true
       image-digest:
@@ -64,17 +65,19 @@ on:
         description: "ArgoCD API token"
         required: true
       ARGOCD_SERVER:
-        description: "ArgoCD server address"
+        description: "ArgoCD server address (e.g. argocd.karimocp.website)"
+        required: true
+      KUBECONFIG_B64:
+        description: "Base64-encoded kubeconfig for the target cluster"
         required: true
 
-# Minimum required permissions
 permissions:
   contents: write
 
 jobs:
   deploy:
     name: "🚀 Deploy"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -85,11 +88,31 @@ jobs:
       - name: Normalize image name
         run: echo "IMAGE_NAME_LOWER=$(echo '${{ inputs.image-name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-      - name: Determine Environment
-        id: env
+      - name: Install kubectl
         run: |
-          echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-          echo "overlay=${{ inputs.overlay }}" >> $GITHUB_OUTPUT
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /tmp/argocd
+          sudo mv /tmp/argocd /usr/local/bin/argocd
+          argocd version --client
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl get nodes
 
       - name: Setup Secrets and Project
         run: |
@@ -98,10 +121,7 @@ jobs:
 
       - name: Update Kubernetes Manifests
         run: |
-          # Update image tag in Kustomization
-          cd k8s/overlays/${{ steps.env.outputs.overlay }}
-
-          # Set the new image with digest
+          cd k8s/overlays/${{ inputs.overlay }}
           kustomize edit set image \
             ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}=${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
 
@@ -110,9 +130,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add k8s/overlays/${{ steps.env.outputs.overlay }}/
+          git add k8s/overlays/${{ inputs.overlay }}/
 
-          # Only commit if there are actual changes
           if git diff --staged --quiet; then
             echo "No manifest changes to commit"
           else
@@ -123,21 +142,14 @@ jobs:
             Run         : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             Commit      : ${{ github.sha }}
             Ref         : ${{ github.ref }}"
-
             git push origin HEAD:${{ github.ref_name }}
           fi
 
-      - name: Port-forward ArgoCD Server
-        run: |
-          kubectl port-forward -n argocd services/argocd-server 8080:80 &
-
       - name: Sync ArgoCD Application
-        id: deploy
         env:
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
         run: |
-          # Trigger sync with retry
           MAX_RETRIES=3
           RETRY_COUNT=0
 
@@ -146,7 +158,7 @@ jobs:
 
             if argocd app sync ${{ inputs.app-name }} \
               --server $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN \
-              --insecure --force --timeout 300; then
+              --grpc-web --insecure --force --timeout 300; then
               echo "Sync initiated successfully"
               break
             fi
@@ -163,10 +175,9 @@ jobs:
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
         run: |
-          # Wait for sync to complete
           argocd app wait ${{ inputs.app-name }} \
             --server $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN \
-            --insecure \
+            --grpc-web --insecure \
             --health \
             --sync \
             --timeout 600
@@ -176,12 +187,13 @@ jobs:
           echo "## 🚀 Deployment Status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Get app status
-          argocd app get ${{ inputs.app-name }} -o wide >> $GITHUB_STEP_SUMMARY
+          argocd app get ${{ inputs.app-name }} --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_TOKEN }} --grpc-web --insecure -o wide >> $GITHUB_STEP_SUMMARY
 
-          # Get health status
-          HEALTH=$(argocd app get ${{ inputs.app-name }} -o json | jq -r '.status.health.status')
-          SYNC=$(argocd app get ${{ inputs.app-name }} -o json | jq -r '.status.sync.status')
+          HEALTH=$(argocd app get ${{ inputs.app-name }} --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_TOKEN }} --grpc-web --insecure -o json | jq -r '.status.health.status')
+          SYNC=$(argocd app get ${{ inputs.app-name }} --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_TOKEN }} --grpc-web --insecure -o json | jq -r '.status.sync.status')
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Status | Value |" >> $GITHUB_STEP_SUMMARY

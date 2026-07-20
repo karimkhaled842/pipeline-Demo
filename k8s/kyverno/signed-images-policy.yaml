@@ -30,15 +30,15 @@ spec:
       matchLabels:
         kubernetes.io/metadata.name: secureapp-dev
   matchImageReferences:
-    - glob: "ghcr.io/ahmed-magdi2712/devsecops-usecase*" # ✅ Only this registry is allowed
+    - glob: "karimkhaled842/pipeline-demo*" # ✅ Only this registry is allowed
   attestors:
     - name: "attestor"
       cosign:
         key:
           data: |
             -----BEGIN PUBLIC KEY-----
-            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEts83RWM23QrJW4KX78bs1ljIvsjF
-            BiGamz8zn3dxHmCulcllP5L4FHpi3IBzqNHZfpH/X9SC4WA8UwjaGXsmQw==
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYFE6ABcn6JYc5amFzDcxviQd+VHP
+            OaSC5nvNEoiK5feYn6Hv5IE1QakTudheOFVtPgeH3oQhH9oovmNJm8hPRA==
             -----END PUBLIC KEY-----
   # attestations:
   #   - name: sbom # Logical name for this attestation

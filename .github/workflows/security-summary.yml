@@ -46,6 +46,10 @@ on:
         description: "Result of the scan job"
         type: string
         required: true
+      kcs-scan-status:
+        description: "Result of the KCS scan job"
+        type: string
+        required: true
       sign-status:
         description: "Result of the sign job"
         type: string
@@ -75,6 +79,7 @@ jobs:
           echo "| 🟠 SonarQube | ${{ inputs.sonarqube-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🔵 Build & SBOM | ${{ inputs.build-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🟣 Image Scan | ${{ inputs.scan-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🛡️ KCS Scan | ${{ inputs.kcs-scan-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🟢 Sign | ${{ inputs.sign-status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🚀 Deploy | ${{ inputs.deploy-status == 'success' && '✅ Passed' || inputs.deploy-status == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -92,6 +97,7 @@ jobs:
           inputs.test-status == 'failure' ||
           inputs.sonarqube-status == 'failure' ||
           inputs.scan-status == 'failure' ||
+          inputs.kcs-scan-status == 'failure' ||
           inputs.sign-status == 'failure'
         run: |
           echo "::error::Security pipeline failed. Review the failed stages above."

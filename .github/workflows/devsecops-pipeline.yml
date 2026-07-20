@@ -22,8 +22,8 @@ permissions:
   pull-requests: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: docker.io
+  IMAGE_NAME: karimkhaled842/pipeline-demo
   COSIGN_EXPERIMENTAL: "true"
   SYFT_FORMAT: "spdx-json"
   APP_NAME: secureapp-dev
@@ -72,8 +72,11 @@ jobs:
       'refs/heads/release/')
     uses: ./.github/workflows/build.yml
     with:
-      registry: 'ghcr.io'
-      image-name: ${{ github.repository }}
+      registry: 'docker.io'
+      image-name: 'karimkhaled842/pipeline-demo'
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ============================================================================
   # STAGE 5: SCAN IMAGES WITH MULTIPLE TOOLS
@@ -83,27 +86,50 @@ jobs:
     needs: build
     uses: ./.github/workflows/scan.yml
     with:
-      registry: 'ghcr.io'
-      image-name: ${{ github.repository }}
+      registry: 'docker.io'
+      image-name: 'karimkhaled842/pipeline-demo'
       image-tag: ${{ needs.build.outputs.image-tag }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # ============================================================================
+  # STAGE 5b: SCAN IMAGES WITH KASPERSKY CONTAINER SECURITY (KCS)
+  # ============================================================================
+  kcs-scan:
+    name: "🛡️ KCS Image Scan"
+    needs: build
+    uses: ./.github/workflows/kcs-scan.yml
+    with:
+      registry: 'docker.io'
+      image-name: 'karimkhaled842/pipeline-demo'
+      image-tag: ${{ needs.build.outputs.image-tag }}
+    secrets:
+      API_TOKEN: ${{ secrets.API_TOKEN }}
+      KCS_REGISTRY_USERNAME: ${{ secrets.KCS_REGISTRY_USERNAME }}
+      KCS_REGISTRY_PASSWORD: ${{ secrets.KCS_REGISTRY_PASSWORD }}
+      COMPANY_EXT_REGISTRY_USERNAME: ${{ secrets.COMPANY_EXT_REGISTRY_USERNAME }}
+      COMPANY_EXT_REGISTRY_PASSWORD: ${{ secrets.COMPANY_EXT_REGISTRY_PASSWORD }}
 
   # ============================================================================
   # STAGE 6: SIGN WITH COSIGN
   # ============================================================================
   sign:
     name: "🟢 Sign Image"
-    needs: [ scan, build ]
+    needs: [ scan, kcs-scan, build ]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref,
       'refs/heads/release/')
     uses: ./.github/workflows/sign.yml
     with:
-      registry: 'ghcr.io'
-      image-name: ${{ github.repository }}
+      registry: 'docker.io'
+      image-name: 'karimkhaled842/pipeline-demo'
       image-digest: ${{ needs.build.outputs.image-digest }}
       cosign-public-key: ${{ vars.COSIGN_PUBLIC_KEY }}
     secrets:
       COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
       COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ============================================================================
   # STAGE 7: DEPLOY WITH ARGOCD
@@ -114,8 +140,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy.yml
     with:
-      registry: 'ghcr.io'
-      image-name: ${{ github.repository }}
+      registry: 'docker.io'
+      image-name: 'karimkhaled842/pipeline-demo'
       image-digest: ${{ needs.build.outputs.image-digest }}
       app-name: 'secureapp-dev'
       environment: 'development'
@@ -124,13 +150,14 @@ jobs:
       GIT_TOKEN_COMMIT: ${{ secrets.GIT_TOKEN_COMMIT }}
       ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
       ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+      KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
 
   # ============================================================================
   # SECURITY SUMMARY
   # ============================================================================
   security-summary:
     name: "📋 Security Summary"
-    needs: [ lint, test, sonarqube, build, scan, sign, deploy ]
+    needs: [ lint, test, sonarqube, build, scan, kcs-scan, sign, deploy ]
     if: always()
     uses: ./.github/workflows/security-summary.yml
     with:
@@ -139,5 +166,6 @@ jobs:
       sonarqube-status: ${{ needs.sonarqube.result }}
       build-status: ${{ needs.build.result }}
       scan-status: ${{ needs.scan.result }}
+      kcs-scan-status: ${{ needs.kcs-scan.result }}
       sign-status: ${{ needs.sign.result }}
       deploy-status: ${{ needs.deploy.result }}

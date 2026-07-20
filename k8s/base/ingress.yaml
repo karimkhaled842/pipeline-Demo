@@ -14,15 +14,15 @@ metadata:
     nginx.ingress.kubernetes.io/custom-http-errors: "404,415,500,502,503,504"
     nginx.ingress.kubernetes.io/proxy-buffering: "on"
     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - app.example.com
+        - app.karimocp.website
       secretName: secureapp-tls
   rules:
-    - host: app.example.com
+    - host: app.karimocp.website
       http:
         paths:
           - path: /

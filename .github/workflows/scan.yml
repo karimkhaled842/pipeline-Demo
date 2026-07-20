@@ -27,12 +27,19 @@ on:
         type: string
         required: true
       image-name:
-        description: "Image repository name (e.g., org/repo)"
+        description: "Image repository name (e.g., namespace/repo)"
         type: string
         required: true
       image-tag:
         description: "Docker image tag(s) to scan"
         type: string
+        required: true
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: "Docker Hub username (to pull the private image)"
+        required: true
+      DOCKERHUB_TOKEN:
+        description: "Docker Hub access token"
         required: true
 
 # Minimum required permissions
@@ -55,12 +62,12 @@ jobs:
           name: sbom-artifacts
           path: sbom/
 
-      - name: Login to GitHub Container Registry
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # -------------------------------------------------------------------------
       # TRIVY SCANNER
