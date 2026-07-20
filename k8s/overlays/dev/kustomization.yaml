@@ -37,6 +37,6 @@ configMapGenerator:
   name: secureapp-config
 
 images:
-- digest: sha256:23a7701888414d66bf9223ece107e4b09cb736ea271dbf8ebf600177e117019f
+- digest: sha256:94f27676804428e82cd07e57241928032e4af80d58230bfdc4ec662bfe381163
   name: karimkhaledopsera/pipeline-demo
   newName: docker.io/karimkhaledopsera/pipeline-demo
