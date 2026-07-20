@@ -144,6 +144,19 @@ jobs:
             git push origin HEAD:${{ github.ref_name }}
           fi
 
+      - name: Verify ArgoCD Access
+        env:
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+        run: |
+          if ! argocd app get ${{ inputs.app-name }} \
+            --server $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN \
+            --grpc-web --insecure >/dev/null 2>&1; then
+            echo "::error::ArgoCD token lacks 'get' permission on '${{ inputs.app-name }}' (or app does not exist). Check ARGOCD_TOKEN RBAC: applications, get, */*, allow"
+            exit 1
+          fi
+          echo "ArgoCD access verified for '${{ inputs.app-name }}'"
+
       - name: Sync ArgoCD Application
         env:
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
@@ -168,6 +181,11 @@ jobs:
               sleep 30
             fi
           done
+
+          if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+            echo "::error::ArgoCD sync failed after $MAX_RETRIES attempts"
+            exit 1
+          fi
 
       - name: Wait for ArgoCD Sync
         env:
