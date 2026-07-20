@@ -1,43 +1,42 @@
----
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: secureapp-dev
 
 resources:
-  - ../../base
+- ../../base
 
 namePrefix: dev-
 
 patches:
-  - patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: app
-      spec:
-        replicas: 1
-        template:
-          spec:
-            containers:
-              - name: api
-                resources:
-                  requests:
-                    cpu: "50m"
-                    memory: "128Mi"
-                  limits:
-                    cpu: "200m"
-                    memory: "256Mi"
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: app
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+            - name: api
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
 
 configMapGenerator:
-  - name: secureapp-config
-    behavior: merge
-    literals:
-      - ENVIRONMENT=development
-      - LOG_LEVEL=debug
-      - WORKERS=1
+- behavior: merge
+  literals:
+  - ENVIRONMENT=development
+  - LOG_LEVEL=debug
+  - WORKERS=1
+  name: secureapp-config
 
 images:
-  - digest: sha256:ead6500200226cffb8dda72077445cf613893a9d5cc87ee3303c1b044b958784
-    name: karimkhaledopsera/pipeline-demo
-    newName: docker.io/karimkhaledopsera/pipeline-demo
+- digest: sha256:23a7701888414d66bf9223ece107e4b09cb736ea271dbf8ebf600177e117019f
+  name: karimkhaledopsera/pipeline-demo
+  newName: docker.io/karimkhaledopsera/pipeline-demo
