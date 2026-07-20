@@ -73,10 +73,12 @@ jobs:
         continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           args: >
             -Dsonar.projectBaseDir=.
             -Dsonar.scm.revision=${{ github.sha }}
+            -Dsonar.branch.name=${{ github.ref_name }}
 
       - name: SonarQube Quality Gate
         id: sonarqube-quality-gate-check
