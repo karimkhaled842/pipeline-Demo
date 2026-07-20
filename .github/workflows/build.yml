@@ -83,7 +83,7 @@ jobs:
         with:
           images: ${{ inputs.registry }}/${{ inputs.image-name }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=sha-
 
       - name: Set image-sha output
         id: tag

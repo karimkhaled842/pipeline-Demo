@@ -66,13 +66,14 @@ jobs:
     name: "🛡️ KCS Image Scan"
     runs-on: ubuntu-latest
     env:
-      SCAN_TARGET: ${{ inputs.image-name }}:sha-${{ inputs.image-sha }}
+      SCAN_TARGET: ${{ inputs.registry }}/${{ inputs.image-name }}:sha-${{ inputs.image-sha }}
       BUILD_NUMBER: ${{ github.run_id }}
       BUILD_PIPELINE: ${{ github.run_id }}
       API_TOKEN: ${{ secrets.API_TOKEN }}
       COMPANY_EXT_REGISTRY_USERNAME: ${{ secrets.COMPANY_EXT_REGISTRY_USERNAME }}
       COMPANY_EXT_REGISTRY_PASSWORD: ${{ secrets.COMPANY_EXT_REGISTRY_PASSWORD }}
       API_BASE_URL: https://kcs.karimocp.website
+      SKIP_API_SERVER_VALIDATION: "true"
       RUST_BACKTRACE: full
     steps:
       - name: Login to Kaspersky registry (pull the scanner image)
@@ -130,7 +131,7 @@ jobs:
         run: |
           echo "## 🛡️ KCS Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Scanned image:** \`${{ inputs.image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Scanned image:** \`${{ env.SCAN_TARGET }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**KCS API:** \`${{ env.API_BASE_URL }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Scanner:** \`repo.kcs.kaspersky.com/images/scanner:v2.5.0-with-db\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

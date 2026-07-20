@@ -58,7 +58,7 @@ jobs:
 
       - name: Set image reference
         id: img
-        run: echo "image-ref=${{ inputs.image-name }}:sha-${{ inputs.image-sha }}" >> $GITHUB_OUTPUT
+        run: echo "image-ref=${{ inputs.registry }}/${{ inputs.image-name }}:sha-${{ inputs.image-sha }}" >> $GITHUB_OUTPUT
 
       - name: Debug image ref
         run: 'echo "Scanning: ${{ steps.img.outputs.image-ref }}"'
