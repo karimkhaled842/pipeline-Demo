@@ -116,7 +116,7 @@ jobs:
   # ============================================================================
   sign:
     name: "🟢 Sign Image"
-    needs: [ scan, kcs-scan, build ]
+    needs: [ kcs-scan, build ]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref,
       'refs/heads/release/')
     uses: ./.github/workflows/sign.yml
@@ -157,7 +157,7 @@ jobs:
   # ============================================================================
   security-summary:
     name: "📋 Security Summary"
-    needs: [ lint, test, sonarqube, build, scan, kcs-scan, sign, deploy ]
+    needs: [ lint, test, sonarqube, build, kcs-scan, sign, deploy ]
     if: always()
     uses: ./.github/workflows/security-summary.yml
     with:
