@@ -82,7 +82,7 @@ jobs:
           username: ${{ secrets.KCS_REGISTRY_USERNAME }}
           password: ${{ secrets.KCS_REGISTRY_PASSWORD }}
 
-      - name: Run KCS Scanner (JSON + HTML report)
+      - name: Run KCS Scanner (JSON report)
         run: |
           docker run --rm \
             -e SCAN_TARGET \
@@ -94,7 +94,7 @@ jobs:
             -e API_BASE_URL \
             -e RUST_BACKTRACE \
             repo.kcs.kaspersky.com/images/scanner:v2.5.0-with-db \
-            /bin/sh /entrypoint.sh "$SCAN_TARGET" --stdout > kcs-scan-report.json
+            "$SCAN_TARGET" --stdout > kcs-scan-report.json
 
       - name: Run KCS Scanner (HTML report)
         run: |
@@ -108,7 +108,7 @@ jobs:
             -e API_BASE_URL \
             -e RUST_BACKTRACE \
             repo.kcs.kaspersky.com/images/scanner:v2.5.0-with-db \
-            /bin/sh /entrypoint.sh "$SCAN_TARGET" --html --stdout > kcs-scan-report.html
+            "$SCAN_TARGET" --html --stdout > kcs-scan-report.html
 
       - name: Upload KCS Scan JSON Report
         uses: actions/upload-artifact@v4
