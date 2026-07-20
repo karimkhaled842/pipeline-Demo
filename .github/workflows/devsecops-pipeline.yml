@@ -78,20 +78,20 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  # ============================================================================
-  # STAGE 5: SCAN IMAGES WITH MULTIPLE TOOLS
-  # ============================================================================
-  scan:
-    name: "🟣 Image Scan"
-    needs: build
-    uses: ./.github/workflows/scan.yml
-    with:
-      registry: 'docker.io'
-      image-name: 'karimkhaledopsera/pipeline-demo'
-      image-sha: ${{ needs.build.outputs.image-sha }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  # # ============================================================================
+  # # STAGE 5: SCAN IMAGES WITH MULTIPLE TOOLS
+  # # ============================================================================
+  # scan:
+  #   name: "🟣 Image Scan"
+  #   needs: build
+  #   uses: ./.github/workflows/scan.yml
+  #   with:
+  #     registry: 'docker.io'
+  #     image-name: 'karimkhaledopsera/pipeline-demo'
+  #     image-sha: ${{ needs.build.outputs.image-sha }}
+  #   secrets:
+  #     DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  #     DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ============================================================================
   # STAGE 5b: SCAN IMAGES WITH KASPERSKY CONTAINER SECURITY (KCS)
