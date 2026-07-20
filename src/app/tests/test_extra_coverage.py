@@ -45,7 +45,7 @@ class TestMainApp:
 
         app = create_app()
         # Check that routers are included
-        routes = [r.path for r in app.routes]
+        routes = list(app.openapi()["paths"].keys())
         assert any("/api/v1/health" in p for p in routes)
         assert any("/api/v1/auth" in p for p in routes)
 

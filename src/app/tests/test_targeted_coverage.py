@@ -515,7 +515,7 @@ class TestMainAppCoverage:
         from src.app.main import create_app
 
         app = create_app()
-        routes = [r.path for r in app.routes]
+        routes = list(app.openapi()["paths"].keys())
         assert any("/api/v1/health" in p for p in routes)
 
     def test_app_includes_users_router(self):
@@ -523,7 +523,7 @@ class TestMainAppCoverage:
         from src.app.main import create_app
 
         app = create_app()
-        routes = [r.path for r in app.routes]
+        routes = list(app.openapi()["paths"].keys())
         assert any("/api/v1/users" in p for p in routes)
 
     def test_app_includes_items_router(self):
@@ -531,7 +531,7 @@ class TestMainAppCoverage:
         from src.app.main import create_app
 
         app = create_app()
-        routes = [r.path for r in app.routes]
+        routes = list(app.openapi()["paths"].keys())
         assert any("/api/v1/items" in p for p in routes)
 
     def test_app_includes_auth_router(self):
@@ -539,7 +539,7 @@ class TestMainAppCoverage:
         from src.app.main import create_app
 
         app = create_app()
-        routes = [r.path for r in app.routes]
+        routes = list(app.openapi()["paths"].keys())
         assert any("/api/v1/auth" in p for p in routes)
 
 
