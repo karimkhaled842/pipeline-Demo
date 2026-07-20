@@ -136,7 +136,7 @@ jobs:
   # ============================================================================
   deploy:
     name: "🚀 Deploy"
-    needs: [ build ]
+    needs: [ build , kcs-scan ]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy.yml
     with:

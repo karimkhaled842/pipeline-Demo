@@ -110,6 +110,7 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
+          mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
           kubectl get nodes
@@ -123,7 +124,7 @@ jobs:
         run: |
           cd k8s/overlays/${{ inputs.overlay }}
           kustomize edit set image \
-            ${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}=${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
+            ${{ env.IMAGE_NAME_LOWER }}=${{ inputs.registry }}/${{ env.IMAGE_NAME_LOWER }}@${{ inputs.image-digest }}
 
       - name: Commit Manifest Changes to SCM
         run: |
