@@ -111,32 +111,32 @@ jobs:
       COMPANY_EXT_REGISTRY_USERNAME: ${{ secrets.COMPANY_EXT_REGISTRY_USERNAME }}
       COMPANY_EXT_REGISTRY_PASSWORD: ${{ secrets.COMPANY_EXT_REGISTRY_PASSWORD }}
 
-  # ============================================================================
-  # STAGE 6: SIGN WITH COSIGN
-  # ============================================================================
-  sign:
-    name: "🟢 Sign Image"
-    needs: [ kcs-scan, build ]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref,
-      'refs/heads/release/')
-    uses: ./.github/workflows/sign.yml
-    with:
-      registry: 'docker.io'
-      image-name: 'karimkhaledopsera/pipeline-demo'
-      image-digest: ${{ needs.build.outputs.image-digest }}
-      cosign-public-key: ${{ vars.COSIGN_PUBLIC_KEY }}
-    secrets:
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  # # ============================================================================
+  # # STAGE 6: SIGN WITH COSIGN
+  # # ============================================================================
+  # sign:
+  #   name: "🟢 Sign Image"
+  #   needs: [ kcs-scan, build ]
+  #   if: github.ref == 'refs/heads/main' || startsWith(github.ref,
+  #     'refs/heads/release/')
+  #   uses: ./.github/workflows/sign.yml
+  #   with:
+  #     registry: 'docker.io'
+  #     image-name: 'karimkhaledopsera/pipeline-demo'
+  #     image-digest: ${{ needs.build.outputs.image-digest }}
+  #     cosign-public-key: ${{ vars.COSIGN_PUBLIC_KEY }}
+  #   secrets:
+  #     COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+  #     COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+  #     DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  #     DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ============================================================================
   # STAGE 7: DEPLOY WITH ARGOCD
   # ============================================================================
   deploy:
     name: "🚀 Deploy"
-    needs: [ sign, build ]
+    needs: [ build ]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy.yml
     with:
@@ -157,7 +157,7 @@ jobs:
   # ============================================================================
   security-summary:
     name: "📋 Security Summary"
-    needs: [ lint, test, sonarqube, build, kcs-scan, sign, deploy ]
+    needs: [ lint, test, sonarqube, build, kcs-scan, deploy ]
     if: always()
     uses: ./.github/workflows/security-summary.yml
     with:
