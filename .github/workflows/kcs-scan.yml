@@ -95,6 +95,7 @@ jobs:
             -e COMPANY_EXT_REGISTRY_USERNAME \
             -e COMPANY_EXT_REGISTRY_PASSWORD \
             -e API_BASE_URL \
+            -e SKIP_API_SERVER_VALIDATION \
             -e RUST_BACKTRACE \
             repo.kcs.kaspersky.com/images/scanner:v2.5.0-with-db \
             "$SCAN_TARGET" --stdout > kcs-scan-report.json
@@ -109,6 +110,7 @@ jobs:
             -e COMPANY_EXT_REGISTRY_USERNAME \
             -e COMPANY_EXT_REGISTRY_PASSWORD \
             -e API_BASE_URL \
+            -e SKIP_API_SERVER_VALIDATION \
             -e RUST_BACKTRACE \
             repo.kcs.kaspersky.com/images/scanner:v2.5.0-with-db \
             "$SCAN_TARGET" --html --stdout > kcs-scan-report.html
