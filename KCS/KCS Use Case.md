@@ -111,7 +111,6 @@ Domain: DEMO.LAB
 
 Password Ka5per5Ky!
 
-This server is also the DNS kcs is accessible at https://kcs.demo.lab admin/Ka5per5Ky!
-
+This server is also the DNS kcs is accessible at <https://kcs.demo.lab> admin/Ka5per5Ky!
 
 ---

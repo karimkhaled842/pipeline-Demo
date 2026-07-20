@@ -838,7 +838,7 @@ graph TD
 
 ### Stage Dependencies (Needs Graph)
 
-```
+```text
 lint ──→ test ──→ sonarqube ──→ build ──→ scan ──→ sign ──→ security-summary ──→ deploy
                                                ↗
                                         (needs: build)
@@ -912,6 +912,7 @@ Configure these in **Settings → CI/CD → Variables**:
 ### Container Registry CA Certificate
 
 If your GitLab runner uses a self-signed registry certificate:
+
 ```yaml
 before_script:
   - cat /etc/gitlab-runner/certs/gitlab.demo.lab.crt >> /kaniko/ssl/certs/ca-certificates.crt
@@ -920,6 +921,7 @@ before_script:
 ### SBOM Mode (KCS Lightweight)
 
 For quicker scans that check vulnerabilities only:
+
 ```yaml
 script:
   - /bin/sh /entrypoint.sh $SCAN_TARGET --sbom-json --stdout > somefile.json

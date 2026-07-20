@@ -79,7 +79,7 @@ graph TB
 
 ### Stage Dependencies
 
-```
+```text
 lint ──→ test ──→ sonarqube ──→ build ──→ scan ──→ sign ──→ security-summary ──→ deploy
                                                                                         │
                                                                               (main branch only)
@@ -123,6 +123,7 @@ The pipeline is built as a **modular orchestrator** with 8 reusable workflows:
 | security-summary | `.github/workflows/security-summary.yml` | Aggregate status table, fail on critical failures |
 
 **Cross-repo usage:**
+
 ```yaml
 jobs:
   lint:
@@ -150,6 +151,7 @@ Equivalent pipeline in the `gitlab_ci/` directory, with 8 template files:
 A **KCS-specific GitLab CI variant** is also available in `KCS/gitlab-pipeline/`, documented in detail in [`KCS/KCS GitLab CI Pipeline.md`](./KCS/KCS%20GitLab%20CI%20Pipeline.md).
 
 **Cross-project usage:**
+
 ```yaml
 include:
   - project: 'ahmed-magdi2712/DevSecOps-Usecase'
@@ -184,6 +186,7 @@ include:
 | **Runtime Profile** (eBPF) | ✅ Done | File threat protection (enforce), process/network control (auto-profiled), FS monitoring |
 
 > **Full documentation:**
+>
 > - [KCS Use Case & Configuration](./KCS/KCS%20Use%20Case.md) — Detailed setup for scanner, assurance, runtime policies, Cosign integration, and runtime profile
 > - [KCS GitLab CI Pipeline Reference](./KCS/KCS%20GitLab%20CI%20Pipeline.md) — Complete 8-stage GitLab CI pipeline with KCS as the core scanner
 
@@ -216,6 +219,7 @@ The lint stage runs multiple static analysis tools in parallel, covering Python,
 | **Checkov** | `k8s/` | IaC security (CIS Kubernetes benchmarks) | CLI flags |
 
 **Usage:**
+
 ```bash
 # Python linting
 ruff check src/ --fix
@@ -242,6 +246,7 @@ markdownlint-cli2 "**/*.md" --config .markdownlint.json
 SonarQube Cloud performs deep static analysis with AI-powered code review.
 
 **Configuration** (`sonar-project.properties`):
+
 ```properties
 sonar.projectKey=ahmed-magdi2712_DevSecOps-Usecase
 sonar.organization=devsecops-poc
@@ -252,11 +257,13 @@ sonar.qualitygate.wait=true
 **CI Integration:** The pipeline downloads test coverage reports, runs `sonar-scanner`, waits for the quality gate, and publishes a metrics summary (bugs, vulnerabilities, code smells, coverage, duplication, security hotspots) via the SonarQube API.
 
 **VS Code Integration:**
+
 1. Install the [SonarQube extension](https://marketplace.visualstudio.com/items?itemName=SonarSource.sonarlint-vscode)
 2. Connect to SonarQube Cloud (`Ctrl+Shift+P` → "SonarQube: Connect to SonarQube")
 3. Organization: `devsecops-poc`
 
 **Local CLI:**
+
 ```bash
 sonar-scanner -Dsonar.projectKey=ahmed-magdi2712_DevSecOps-Usecase
 ```
@@ -272,6 +279,7 @@ sonar-scanner -Dsonar.projectKey=ahmed-magdi2712_DevSecOps-Usecase
 | **Secrets** | Container image | JSON | All findings |
 
 **Key configuration:**
+
 - `exit-code: 1` — pipeline fails on any finding above threshold
 - `.trivyignore` — suppresses known false positives (CVEs with no fix, benign K8s misconfigs)
 - `.trivy-secret.yaml` — custom secret patterns for this project
@@ -339,6 +347,7 @@ OpenCode is integrated via `.github/workflows/opencode.yml` as an AI pair progra
 ### Usage Examples
 
 **On PR Comment:**
+
 ```text
 /oc review this code and suggest improvements
 /oc fix the security vulnerability in src/app/auth.py
@@ -346,6 +355,7 @@ OpenCode is integrated via `.github/workflows/opencode.yml` as an AI pair progra
 ```
 
 **On Issue Comment:**
+
 ```text
 /opencode how do I implement JWT authentication?
 /oc explain the CI/CD pipeline flow
@@ -576,12 +586,14 @@ Add the required secrets from the [Prerequisites & Secrets](#prerequisites--secr
 ### 4. Point to Your Registry
 
 Change `REGISTRY` and `IMAGE_NAME` in:
+
 - GitHub: `devsecops-pipeline.yml` top-level `env:` block
 - GitLab CI: `.gitlab-ci.yml` top-level `variables:` block
 
 ### 5. Customize K8s Manifests
 
 Update `k8s/overlays/<env>/kustomization.yaml` with your:
+
 - Image repository
 - Namespace
 - Resource limits
@@ -598,13 +610,13 @@ Create a SonarQube Cloud project and update `sonar-project.properties` with your
 ### 8. (Optional) Integrate KCS
 
 Follow the [KCS Use Case](./KCS/KCS%20Use%20Case.md) guide to set up:
+
 - Scanner and assurance policies
 - Admission controller
 - Runtime agent
 - Cosign signature verification
 
 ---
-
 
 ## License
 
