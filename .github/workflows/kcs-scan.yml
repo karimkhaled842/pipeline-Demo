@@ -117,6 +117,7 @@ jobs:
 
       - name: Upload KCS Scan JSON Report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: kcs-scan-report-json
           path: kcs-scan-report.json
@@ -124,6 +125,7 @@ jobs:
 
       - name: Upload KCS Scan HTML Report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: kcs-scan-report-html
           path: kcs-scan-report.html
